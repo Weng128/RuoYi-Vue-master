@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.meeting.mapper.ReservationRequestDetailMapper">
+    <resultMap id="ReservationRequestDetailResult" type="com.ruoyi.meeting.domain.ReservationRequestDetail">
+        <id property="detailId" column="detail_id" />
+        <result property="requestId" column="request_id" />
+        <result property="roomId" column="room_id" />
+        <result property="startTime" column="start_time" />
+        <result property="endTime" column="end_time" />
+        <!-- 新增映射字段 -->
+        <result property="status" column="status" />
+        <result property="applicantName" column="applicant_name" />
+        <result property="adminName" column="admin_name" />
+    </resultMap>
+
+    <sql id="Base_Columns">detail_id, request_id, room_id, start_time, end_time</sql>
+
+    <select id="selectReservationRequestDetailByDetailId" parameterType="long" resultMap="ReservationRequestDetailResult">
+        select <include refid="Base_Columns"/> from reservation_request_detail where detail_id=#{detailId}
+    </select>
+
+    <select id="selectReservationRequestDetailList" resultMap="ReservationRequestDetailResult">
+        select d.detail_id, d.request_id, d.room_id, d.start_time, d.end_time,
+               r.status,
+               ua.nick_name as applicant_name,
+               ub.nick_name as admin_name
+          from reservation_request_detail d
+          left join reservation_request r on r.request_id = d.request_id
+          left join sys_user ua on ua.user_id = r.applicant_id
+          left join sys_user ub on ub.user_id = r.admin_id
+        <where>
+            <if test="requestId != null"> and d.request_id=#{requestId}</if>
+            <if test="roomId != null and roomId != ''"> and d.room_id=#{roomId}</if>
+        </where>
+        order by d.detail_id desc
+    </select>
+
+    <select id="selectByRequestId" parameterType="long" resultMap="ReservationRequestDetailResult">
+        select <include refid="Base_Columns"/> from reservation_request_detail where request_id=#{requestId} order by room_id
+    </select>
+
+    <insert id="insertReservationRequestDetail" parameterType="com.ruoyi.meeting.domain.ReservationRequestDetail" useGeneratedKeys="true" keyProperty="detailId">
+        insert into reservation_request_detail(request_id, room_id, start_time, end_time)
+        values(#{requestId},#{roomId},#{startTime},#{endTime})
+    </insert>
+
+    <insert id="batchInsert">
+        insert into reservation_request_detail(request_id, room_id, start_time, end_time) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.requestId}, #{item.roomId}, #{item.startTime}, #{item.endTime})
+        </foreach>
+    </insert>
+
+    <update id="updateReservationRequestDetail" parameterType="com.ruoyi.meeting.domain.ReservationRequestDetail">
+        update reservation_request_detail
+        <set>
+            <if test="roomId!=null">room_id=#{roomId},</if>
+            <if test="startTime!=null">start_time=#{startTime},</if>
+            <if test="endTime!=null">end_time=#{endTime},</if>
+        </set>
+        where detail_id=#{detailId}
+    </update>
+
+    <delete id="deleteReservationRequestDetailByDetailId" parameterType="long">
+        delete from reservation_request_detail where detail_id=#{detailId}
+    </delete>
+
+    <delete id="deleteReservationRequestDetailByDetailIds">
+        delete from reservation_request_detail where detail_id in
+        <foreach collection="array" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </delete>
+
+    <select id="countApprovedConflicts" resultType="int">
+        select count(1) from reservation_request_detail d
+          join reservation_request r on r.request_id = d.request_id
+         where r.status='APPROVED'
+           and d.room_id in
+           <foreach collection="roomIds" item="rid" open="(" close=")" separator=",">#{rid}</foreach>
+           and d.start_time &lt; #{endTime}
+           and d.end_time &gt; #{startTime}
+           <if test="excludeRequestId != null"> and r.request_id != #{excludeRequestId}</if>
+    </select>
+
+    <select id="listApprovedConflictDetails" resultType="com.ruoyi.meeting.domain.dto.ConflictDetailDTO">
+        select 'REQUEST' as sourceType,
+               r.request_id as requestId,
+               null as reserveId,
+               d.room_id as roomId,
+               d.start_time as startTime,
+               d.end_time as endTime,
+               r.status as status
+          from reservation_request_detail d
+          join reservation_request r on r.request_id = d.request_id
+         where r.status='APPROVED'
+           and d.room_id = #{roomId}
+           and d.start_time &lt; #{endTime}
+           and d.end_time &gt; #{startTime}
+           <if test="excludeRequestId != null"> and r.request_id != #{excludeRequestId}</if>
+         order by d.start_time
+    </select>
+</mapper>

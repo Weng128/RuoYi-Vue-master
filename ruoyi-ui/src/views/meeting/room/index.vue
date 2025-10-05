@@ -1,0 +1,607 @@
+<template>
+  <div class="app-container meeting-room-page">
+    <el-row :gutter="16" class="room-layout">
+      <el-col :span="16" class="room-left">
+        <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
+          <el-form-item label="会议室" prop="roomId">
+            <el-input v-model="queryParams.roomId" placeholder="会议室编号" clearable @keyup.enter.native="handleQuery" />
+          </el-form-item>
+          <el-form-item label="容量" prop="capacity">
+            <el-input v-model="queryParams.capacity" placeholder="请输入容量" clearable @keyup.enter.native="handleQuery" />
+          </el-form-item>
+          <el-form-item label="位置" prop="location">
+            <el-input v-model="queryParams.location" placeholder="请输入位置" clearable @keyup.enter.native="handleQuery" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
+            <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">重置</el-button>
+          </el-form-item>
+        </el-form>
+
+        <el-row :gutter="10" class="mb8 action-bar">
+          <el-col :span="12" class="left-actions">
+            <el-button type="primary" icon="el-icon-plus" size="mini" @click="handleAdd" v-hasPermi="['meeting:room:add']">新增会议室</el-button>
+          </el-col>
+          <el-col :span="12" class="toolbar-col">
+            <right-toolbar :showSearch.sync="showSearch" @queryTable="getList" />
+          </el-col>
+        </el-row>
+
+        <el-table ref="roomTable" v-loading="loading" :data="roomList" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="55" align="center" />
+          <el-table-column label="会议室编号" align="center" prop="roomId" />
+          <el-table-column label="容量" align="center" prop="capacity" width="90" />
+          <el-table-column label="位置" align="center" prop="location" />
+          <el-table-column label="状态" align="center" width="100">
+            <template slot-scope="scope">
+              <el-tag v-if="!canSeeOccupy" type="info">无权限</el-tag>
+              <template v-else>
+                <el-tag v-if="occupyMap[scope.row.roomId] && occupyMap[scope.row.roomId].loading" type="info">加载中</el-tag>
+                <el-tag v-else-if="isOccupiedNow(scope.row.roomId)" type="danger">占用中</el-tag>
+                <el-tag v-else type="success">空闲</el-tag>
+              </template>
+            </template>
+          </el-table-column>
+          <el-table-column label="占用时段" align="left" min-width="320">
+            <template slot-scope="scope">
+              <div class="occupy-cell" v-loading="occupyMap[scope.row.roomId] && occupyMap[scope.row.roomId].loading">
+                <template v-if="!canSeeOccupy">
+                  <span style="color:#909399">暂无权限查看</span>
+                </template>
+                <template v-else>
+                  <div class="occupy-list">
+                    <el-tag v-for="(item, idx) in getFutureOccupy(scope.row.roomId)" :key="idx" size="mini" effect="plain">
+                      {{ item.startTime }} ~ {{ item.endTime }}<span v-if="item.remark">（{{ item.remark }}）</span>
+                    </el-tag>
+                    <el-button type="text" icon="el-icon-refresh" @click.stop="fetchRoomOccupy(scope.row.roomId)" title="刷新该会议室占用" />
+                  </div>
+                  <template v-if="!getFutureOccupy(scope.row.roomId).length">
+                    <span style="color:#909399">暂无占用</span>
+                  </template>
+                </template>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+            <template slot-scope="scope">
+              <el-button size="mini" type="text" icon="el-icon-edit" @click="handleUpdate(scope.row)" v-hasPermi="['meeting:room:edit']">修改</el-button>
+              <el-button size="mini" type="text" icon="el-icon-delete" @click="handleDelete(scope.row)" v-hasPermi="['meeting:room:remove']">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <pagination v-show="total>0" :total="total" :page.sync="queryParams.pageNum" :limit.sync="queryParams.pageSize" @pagination="getList" />
+      </el-col>
+      <el-col :span="8" class="room-right">
+        <el-card shadow="never" class="schedule-card">
+          <div slot="header" class="schedule-header">
+            <span>未来三日会议室日程</span>
+            <el-button v-if="canSeeOccupy" type="text" icon="el-icon-refresh" @click="refreshSchedule" :loading="scheduleLoading">刷新</el-button>
+          </div>
+          <template v-if="!canSeeOccupy">
+            <el-empty description="暂无权限查看占用信息" />
+          </template>
+          <template v-else>
+            <el-skeleton v-if="scheduleLoading && !hasScheduleContent" rows="6" animated />
+            <div v-else class="schedule-body">
+              <div v-for="day in scheduleDays" :key="day.date" class="schedule-day">
+                <div class="schedule-day-title">{{ day.label }}</div>
+                <template v-if="day.records.length">
+                  <el-timeline>
+                    <el-timeline-item v-for="(item, idx) in day.records" :key="idx" :timestamp="item.timeRange" placement="top">
+                      <div class="schedule-item">
+                        <div class="schedule-item-room">{{ item.roomId }}</div>
+                        <div v-if="item.remark" class="schedule-item-remark">{{ item.remark }}</div>
+                      </div>
+                    </el-timeline-item>
+                  </el-timeline>
+                </template>
+                <el-empty v-else class="schedule-empty" description="暂无安排" />
+              </div>
+            </div>
+          </template>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 会议室维护对话框 -->
+    <el-dialog :title="title" :visible.sync="open" width="500px" append-to-body>
+      <el-form ref="form" :model="form" :rules="rules" label-width="90px">
+        <el-form-item label="会议室编号" prop="roomId">
+          <el-input v-model="form.roomId" :disabled="isEdit" placeholder="请输入会议室编号" maxlength="32" show-word-limit />
+        </el-form-item>
+        <el-form-item label="容量" prop="capacity">
+          <el-input v-model="form.capacity" placeholder="请输入容量" />
+        </el-form-item>
+        <el-form-item label="位置" prop="location">
+          <el-input v-model="form.location" placeholder="请输入位置" />
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="submitForm">确 定</el-button>
+        <el-button @click="cancel">取 消</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 申请弹窗 -->
+    <el-dialog title="会议室申请" :visible.sync="applyOpen" width="620px" append-to-body>
+      <el-form ref="applyFormRef" :model="applyForm" :rules="applyRules" label-width="90px">
+        <el-form-item label="会议室" prop="roomIds">
+          <el-select v-model="applyForm.roomIds" multiple filterable placeholder="请选择会议室" style="width:100%">
+            <el-option v-for="r in roomList" :key="r.roomId" :label="r.roomId" :value="r.roomId" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="时间范围" prop="range">
+          <el-date-picker v-model="applyForm.range" type="datetimerange" value-format="yyyy-MM-dd HH:mm:ss" start-placeholder="开始" end-placeholder="结束" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input type="textarea" v-model="applyForm.remark" :rows="3" placeholder="用途/备注" />
+        </el-form-item>
+        <el-form-item label="占用时段">
+          <div v-loading="applyOccupyLoading">
+            <el-table :data="applyOccupy" size="mini" border max-height="200" v-if="applyOccupy && applyOccupy.length">
+              <el-table-column prop="startTime" label="开始" />
+              <el-table-column prop="endTime" label="结束" />
+            </el-table>
+            <el-empty v-else description="暂无占用或未选择会议室" />
+          </div>
+        </el-form-item>
+        <el-form-item v-if="applyConflicts.length" label="冲突结果">
+          <el-table :data="applyConflicts" size="mini" border max-height="200">
+            <el-table-column prop="roomId" label="会议室" width="120" />
+            <el-table-column prop="startTime" label="开始" width="160" />
+            <el-table-column prop="endTime" label="结束" width="160" />
+          </el-table>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="submitApply" :loading="applySubmitting" :disabled="applySubmitting">提 交</el-button>
+        <el-button @click="applyOpen=false" :disabled="applySubmitting">关 闭</el-button>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+<script>
+import { listRoom, getRoom, delRoom, addRoom, updateRoom as apiUpdateRoom } from '@/api/meeting/room'
+import { conflictCheck, submitRequest, listRequestDetail } from '@/api/meeting/request'
+import { listReservation } from '@/api/meeting/reservation'
+import { checkPermi } from '@/utils/permission'
+export default {
+  name: 'Room',
+  data() {
+    return {
+      loading: false,
+      ids: [], single: true, multiple: true,
+      showSearch: true,
+      total: 0,
+      roomList: [],
+      title: '', open: false,
+      queryParams: { pageNum: 1, pageSize: 10, roomId:null, capacity: null, location: null },
+      form: { roomId: null, capacity: null, location: null },
+      isEdit: false,
+      // 展开占用数据缓存（也用于行内占用列）
+      occupyMap: {},
+      // 申请弹窗
+      applyOpen:false,
+      applyForm:{ roomIds:[], range:[], remark:'' },
+      applyRules:{
+        roomIds:[{ required:true, message:'请选择会议室', trigger:'change' }],
+        range:[{ validator:(r,v,cb)=>{ if(!v||v.length!==2) cb(new Error('请选择时间范围')); else cb(); }, trigger:'change' }]
+      },
+      // 自动冲突与占用
+      applyConflicts:[],
+      applyOccupy:[],
+      applyOccupyLoading:false,
+      // 提交中状态
+      applySubmitting:false,
+      rules: {
+        roomId: [{ required: true, message: '会议室编号不能为空', trigger: 'blur' }],
+        capacity: [
+          { required: true, message: '容量不能为空', trigger: 'blur' },
+          { validator: (r,v,cb)=>{ if(v===null||v===''){ return cb(new Error('容量不能为空')); } if(!/^\d+$/.test(String(v))){ return cb(new Error('容量需为数字')); } cb(); }, trigger:'blur' }
+        ],
+        location: [{ required: true, message: '位置不能为空', trigger: 'blur' }]
+      }
+    }
+  },
+  computed:{
+    hasResvListPerm(){ return checkPermi(['meeting:reservation:list']) },
+    hasDetailListPerm(){ return checkPermi(['meeting:detail:list']) },
+    // 只要具备任一权限即可展示占用
+    canSeeOccupy(){ return this.hasResvListPerm || this.hasDetailListPerm },
+    scheduleDays(){
+      if(!this.canSeeOccupy) return []
+      const result = []
+      const dayMs = 24 * 60 * 60 * 1000
+      const baseDate = this.startOfDay(new Date())
+      const baseTs = baseDate.getTime()
+      const orderMap = {}
+      const rooms = Array.isArray(this.roomList) ? this.roomList : []
+      rooms.forEach((room, idx)=>{
+        if(room && room.roomId != null) orderMap[room.roomId] = idx
+      })
+      for(let offset=0; offset<3; offset++){
+        const dayStart = baseTs + offset * dayMs
+        const dayEnd = dayStart + dayMs
+        const dayRecords = []
+        Object.keys(this.occupyMap || {}).forEach(roomId=>{
+          const entry = this.occupyMap[roomId]
+          const list = entry && Array.isArray(entry.list) ? entry.list : []
+          list.forEach(item=>{
+            if(item){
+              if(item.roomId == null && item.room_id != null) item.roomId = item.room_id
+              if(item.startTime == null && item.start_time != null) item.startTime = item.start_time
+              if(item.endTime == null && item.end_time != null) item.endTime = item.end_time
+            }
+            const startTs = this.parseTs(item && item.startTime)
+            const endTs = this.parseTs(item && item.endTime)
+            if(!isFinite(startTs) || !isFinite(endTs)) return
+            if(endTs <= dayStart || startTs >= dayEnd) return
+            dayRecords.push({
+              roomId,
+              rawStart: Math.max(startTs, dayStart),
+              rawEnd: Math.min(endTs, dayEnd),
+              originalStart: startTs,
+              originalEnd: endTs,
+              remark: this.resolveRemark(item)
+            })
+          })
+        })
+        dayRecords.sort((a,b)=>{
+          const orderA = Object.prototype.hasOwnProperty.call(orderMap, a.roomId) ? orderMap[a.roomId] : Number.MAX_SAFE_INTEGER
+          const orderB = Object.prototype.hasOwnProperty.call(orderMap, b.roomId) ? orderMap[b.roomId] : Number.MAX_SAFE_INTEGER
+          if(orderA !== orderB) return orderA - orderB
+          if(a.originalStart !== b.originalStart) return a.originalStart - b.originalStart
+          if(a.originalEnd !== b.originalEnd) return a.originalEnd - b.originalEnd
+          if(a.rawStart !== b.rawStart) return a.rawStart - b.rawStart
+          return a.rawEnd - b.rawEnd
+        })
+        result.push({
+          date: this.formatDate(dayStart),
+          label: this.formatScheduleLabel(new Date(dayStart), offset),
+          records: dayRecords.map(rec=>(
+            {
+              roomId: rec.roomId,
+              timeRange: `${this.formatTimeWithinDay(rec.rawStart, dayStart, dayEnd)} ~ ${this.formatTimeWithinDay(rec.rawEnd, dayStart, dayEnd)}`,
+              remark: rec.remark
+            }
+          ))
+        })
+      }
+      return result
+    },
+    scheduleLoading(){
+      if(!this.canSeeOccupy) return false
+      const map = this.occupyMap || {}
+      const keys = Object.keys(map)
+      if(!keys.length) return this.loading
+      return keys.some(key=> map[key] && map[key].loading)
+    },
+    hasScheduleContent(){
+      if(!this.canSeeOccupy) return false
+      return this.scheduleDays.some(day=>Array.isArray(day.records) && day.records.length)
+    }
+  },
+  // 移除与时段筛选相关的计算属性与监听
+  created() { this.getList() },
+  watch:{
+    // 当会议室选择变化时，刷新占用信息
+    'applyForm.roomIds': function(){ this.loadApplyOccupy() }
+  },
+  methods: {
+    // 统一解析后端返回的时间字符串（如：yyyy-MM-dd HH:mm 或 yyyy-MM-dd HH:mm:ss）为时间戳
+    parseTs(str){
+      if(str == null) return NaN
+      // 原样数字/数字字符串（毫秒或秒）
+      if (typeof str === 'number') return str > 1e12 ? str : str * 1000
+      const s = String(str).trim()
+      if (/^\d{10}$/.test(s)) return parseInt(s,10) * 1000
+      if (/^\d{13}$/.test(s)) return parseInt(s,10)
+      // 兼容性处理：将空格替换为T，或将-替换为/
+      const tryIso = Date.parse(s.replace(' ', 'T'))
+      if(!isNaN(tryIso)) return tryIso
+      const trySlash = Date.parse(s.replace(/-/g,'/'))
+      return trySlash
+    },
+    getList() {
+      this.loading = true
+      listRoom(this.queryParams)
+        .then(r=>{
+          this.roomList = r && r.rows ? r.rows : [];
+          this.total = r && r.total ? r.total : 0;
+          this.prefetchOccupy();
+        })
+        .catch(e=>{ console.error(e); this.roomList=[]; this.total=0; this.$modal && this.$modal.msgError && this.$modal.msgError('加载失败') })
+        .finally(()=>{ this.loading=false })
+    },
+    // 预取当前页所有会议室的占用列表
+    prefetchOccupy(){
+      if(!this.canSeeOccupy) return
+      const ids = (this.roomList || []).map(i=>i.roomId).filter(Boolean)
+      ids.forEach(id=> this.fetchRoomOccupy(id))
+    },
+    refreshSchedule(){
+      if(!this.canSeeOccupy) return
+      this.prefetchOccupy()
+    },
+    fetchRoomOccupy(roomId){
+      if(!roomId) return
+      if(!this.canSeeOccupy){
+        this.$set(this.occupyMap, roomId, { loading:false, list:[] })
+        return
+      }
+      if(!this.occupyMap[roomId]) this.$set(this.occupyMap, roomId, { loading:true, list:[] })
+      else this.occupyMap[roomId].loading = true
+
+      const tasks = []
+      if(this.hasResvListPerm){
+        tasks.push(listReservation({ pageNum:1, pageSize:50, roomId }))
+      }
+      if(this.hasDetailListPerm){
+        // 仅取已审批通过的申请明细
+        tasks.push(listRequestDetail({ pageNum:1, pageSize:50, roomId, status: 'APPROVED' }))
+      }
+
+      Promise.all(tasks).then(resArr=>{
+        const merged = []
+        resArr.forEach(r=>{ const rows = (r && (r.rows || r.data && r.data.rows)) ? (r.rows || r.data.rows) : []; if(Array.isArray(rows)) merged.push(...rows) })
+        // 只保留已通过
+        const approved = merged.filter(this.isApprovedRow)
+        approved.sort((a,b)=> this.parseTs(a.startTime) - this.parseTs(b.startTime))
+        this.$set(this.occupyMap, roomId, { loading:false, list: approved })
+      }).catch(()=>{
+        this.$set(this.occupyMap, roomId, { loading:false, list:[] })
+      })
+    },
+    // 仅返回“当前及未来”的占用，使用统一解析，多个时段全部展示
+    getFutureOccupy(roomId){
+      const all = (this.occupyMap[roomId] && this.occupyMap[roomId].list) || []
+      if(!all.length) return []
+      const now = Date.now()
+      return all.filter(x=>{
+        const end = this.parseTs(x.endTime)
+        return isFinite(end) ? end >= now : true
+      })
+    },
+    handleSelectionChange(sel){ this.ids = sel.map(i=>i.roomId); this.single = sel.length!==1; this.multiple = !sel.length },
+    handleQuery(){ this.queryParams.pageNum=1; this.getList() },
+    resetQuery(){ this.resetForm('queryForm'); this.handleQuery() },
+    handleAdd(){ this.reset(); this.isEdit=false; this.open=true; this.title='新增会议室' },
+    handleUpdate(row){ const id = (row && row.roomId) || this.ids[0]; if(!id){ this.$modal.msgWarning('请选择一条数据'); return } this.reset(); getRoom(id).then(r=>{ this.form = r.data || {}; this.isEdit=true; this.open=true; this.title='修改会议室' }) },
+    submitForm(){ this.$refs['form'].validate(valid=>{ if(!valid) return; const payload={ ...this.form, roomId:(this.form.roomId||'').trim() }; if(!payload.roomId){ this.$modal.msgError('会议室编号不能为空'); return } (this.isEdit? apiUpdateRoom(payload): addRoom(payload)).then(()=>{ this.$modal.msgSuccess(this.isEdit?'修改成功':'新增成功'); this.open=false; this.getList() }) }) },
+    handleDelete(row){ const ids = row && row.roomId ? row.roomId : this.ids; if(!ids || (Array.isArray(ids)&&!ids.length)){ this.$modal.msgWarning('请选择要删除的数据'); return } this.$modal.confirm('确认删除选中会议室吗？').then(()=>delRoom(ids)).then(()=>{ this.$modal.msgSuccess('删除成功'); this.getList() }).catch(()=>{}) },
+    handleExport(){ this.download('meeting/room/export', { ...this.queryParams }, `room_${Date.now()}.xlsx`) },
+    cancel(){ this.open=false; this.reset() },
+    reset(){ this.form = { roomId:null, capacity:null, location:null }; this.resetForm && this.resetForm('form') },
+    quickApply(row){ this.openApply([row.roomId], []) },
+    applySelected(){ if(!this.ids.length){ this.$modal.msgWarning('请勾选会议室'); return } this.openApply(this.ids, []) },
+    openApply(roomIds, range){
+      this.applyForm={ roomIds:[...roomIds], range:[...(range||[])], remark:'' }
+      this.applyConflicts=[]
+      this.applyOpen=true
+      this.$nextTick(()=> this.loadApplyOccupy())
+    },
+    // 加载所选会议室的占用时段
+    loadApplyOccupy(){
+      const ids = this.applyForm.roomIds || []
+      this.applyOccupy=[]
+      if(!ids.length){ return }
+      this.applyOccupyLoading=true
+      const perRoomTasks = ids.map(id=>{
+        const tasks=[]
+        if(this.hasResvListPerm){ tasks.push(listReservation({ pageNum:1, pageSize:50, roomId:id }).then(r=>{ const rows=(r && (r.rows || (r.data && r.data.rows))) ? (r.rows || r.data.rows) : []; rows.forEach(x=> x.roomId = id); return rows }).catch(()=>[])) }
+        if(this.hasDetailListPerm){ tasks.push(listRequestDetail({ pageNum:1, pageSize:50, roomId:id, status:'APPROVED' }).then(r=>{ const rows=(r && (r.rows || (r.data && r.data.rows))) ? (r.rows || r.data.rows) : []; rows.forEach(x=>{ if(x && x.roomId==null) x.roomId = id }); return rows }).catch(()=>[])) }
+        if(!tasks.length) return Promise.resolve([])
+        return Promise.all(tasks).then(parts=>[].concat(...parts)).catch(()=>[])
+      })
+      Promise.all(perRoomTasks)
+        .then(listSets=>{
+          const merged = [].concat(...listSets).filter(this.isApprovedRow)
+          // 标准化时间字段
+          merged.forEach(it=>{ if(it && it.startTime == null && it.start_time != null) it.startTime = it.start_time; if(it && it.endTime == null && it.end_time != null) it.endTime = it.end_time })
+          merged.sort((a,b)=>{
+            if(a.roomId!==b.roomId) return String(a.roomId).localeCompare(String(b.roomId))
+            return this.parseTs(a.startTime) - this.parseTs(b.startTime)
+          })
+          this.applyOccupy = merged
+        })
+        .finally(()=>{ this.applyOccupyLoading=false })
+    },
+    // 移除手动冲突检测按钮逻辑，提交时自动检测
+    submitApply(){
+      this.$refs['applyFormRef'].validate(valid=>{
+        if(!valid) return
+        const [s,e] = this.applyForm.range
+        const roomIds = this.applyForm.roomIds
+        this.applySubmitting = true
+        this.applyConflicts = []
+        // 提交前自动冲突检测
+        conflictCheck({ roomIds, startTime:s, endTime:e })
+          .then(r=>{
+            const conflicts = (r && r.data) ? r.data : []
+            if(conflicts.length){
+              this.applyConflicts = conflicts
+              this.$modal.msgError('存在冲突，请调整时间或会议室后再提交')
+              this.applySubmitting = false
+              return
+            }
+            // 无冲突，继续提交
+            this.doSubmitApply()
+          })
+          .catch(()=>{ this.$modal.msgError('冲突检测失败，请稍后重试') })
+          .finally(()=>{ if(!this.applyConflicts.length){ /* 正常提交时在 doSubmitApply 里关闭 */ } })
+      })
+    },
+    doSubmitApply(){ const [s,e]=this.applyForm.range; submitRequest({ applicantId:this.$store.getters.id, roomIds:this.applyForm.roomIds, startTime:s, endTime:e, remark:this.applyForm.remark }).then(()=>{ this.$modal.msgSuccess('提交成功'); this.applyOpen=false }).finally(()=>{ this.applySubmitting=false }) },
+    // 计算当前是否占用
+    isOccupiedNow(roomId){
+      const m = this.occupyMap[roomId]
+      const list = (m && m.list) ? m.list : []
+      if(!list.length) return false
+      const now = Date.now()
+      const toTs = (v)=>{
+        // 复用 parseTs 若存在
+        return typeof this.parseTs === 'function' ? this.parseTs(v) : Date.parse(String(v).replace(' ','T'))
+      }
+      return list.some(x=>{ const s=toTs(x.startTime); const e=toTs(x.endTime); return isFinite(s)&&isFinite(e) && s <= now && now < e })
+    },
+    startOfDay(date){
+      const d = date instanceof Date ? new Date(date.getTime()) : new Date(date)
+      if(isNaN(d.getTime())) return new Date()
+      d.setHours(0,0,0,0)
+      return d
+    },
+    formatDate(value){
+      const d = value instanceof Date ? value : new Date(value)
+      if(isNaN(d.getTime())) return ''
+      const y = d.getFullYear()
+      const m = `${d.getMonth() + 1}`.padStart(2,'0')
+      const day = `${d.getDate()}`.padStart(2,'0')
+      return `${y}-${m}-${day}`
+    },
+    formatTime(ts){
+      if(!isFinite(ts)) return '--:--'
+      const d = new Date(ts)
+      if(isNaN(d.getTime())) return '--:--'
+      const h = `${d.getHours()}`.padStart(2,'0')
+      const m = `${d.getMinutes()}`.padStart(2,'0')
+      return `${h}:${m}`
+    },
+    formatTimeWithinDay(ts, dayStart, dayEnd){
+      if(!isFinite(ts)) return '--:--'
+      if(isFinite(dayStart) && ts <= dayStart) return '00:00'
+      if(isFinite(dayEnd) && ts >= dayEnd) return '24:00'
+      return this.formatTime(ts)
+    },
+    formatScheduleLabel(date, offset){
+      const d = date instanceof Date ? date : new Date(date)
+      if(isNaN(d.getTime())) return ''
+      const weekMap = ['日','一','二','三','四','五','六']
+      const base = this.formatDate(d)
+      const week = weekMap[d.getDay()] || ''
+      if(offset === 0) return `今天 ${base} (周${week})`
+      if(offset === 1) return `明天 ${base} (周${week})`
+      if(offset === 2) return `后天 ${base} (周${week})`
+      return `${base} (周${week})`
+    },
+    resolveRemark(item){
+      if(!item) return ''
+      const remark = item.remark || item.reason || item.purpose || item.applyReason || item.title || ''
+      return remark ? String(remark) : ''
+    },
+    // 仅保留已审批通过（或无status的预约记录）
+    isApprovedRow(x){ const s=(x&&x.status)||''; return !s || s==='APPROVED' }
+  }
+}
+</script>
+
+<style scoped>
+.meeting-room-page {
+  padding-bottom: 0;
+}
+
+.room-layout {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.room-left,
+.room-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.action-bar {
+  align-items: center;
+}
+
+.left-actions .el-button + .el-button {
+  margin-left: 8px;
+}
+
+.toolbar-col {
+  text-align: right;
+}
+
+.occupy-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.occupy-list .el-tag {
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+
+.schedule-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.schedule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.schedule-body {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+  padding-right: 4px;
+}
+
+.schedule-day + .schedule-day {
+  margin-top: 16px;
+}
+
+.schedule-day-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #303133;
+}
+
+.schedule-item-room {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.schedule-item-remark {
+  color: #909399;
+  font-size: 12px;
+}
+
+.schedule-empty {
+  margin: 8px 0;
+  padding: 8px 0;
+}
+
+.schedule-empty ::v-deep .el-empty {
+  padding: 12px 0;
+}
+
+.schedule-empty ::v-deep .el-empty__image {
+  width: 90px;
+}
+
+.schedule-empty ::v-deep .el-empty__description {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 1200px) {
+  .room-right {
+    margin-top: 16px;
+  }
+
+  .schedule-body {
+    max-height: none;
+  }
+}
+</style>

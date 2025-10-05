@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.meeting.mapper.MeetingRoomMapper">
+
+    <resultMap type="com.ruoyi.meeting.domain.MeetingRoom" id="MeetingRoomResult">
+        <result property="roomId" column="room_id" />
+        <result property="capacity" column="capacity" />
+        <result property="location" column="location" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">room_id, capacity, location, create_time, update_time</sql>
+
+    <select id="selectMeetingRoomByRoomId" parameterType="String" resultMap="MeetingRoomResult">
+        select <include refid="Base_Column_List"/> from meeting_room where room_id = #{roomId}
+    </select>
+
+    <select id="selectMeetingRoomList" resultMap="MeetingRoomResult">
+        select <include refid="Base_Column_List"/> from meeting_room
+        <where>
+            <if test="roomId != null and roomId != ''"> and room_id = #{roomId}</if>
+            <if test="location != null and location != ''"> and location like concat('%',#{location},'%')</if>
+        </where>
+        order by room_id
+    </select>
+
+    <select id="selectFreeRooms" resultMap="MeetingRoomResult">
+        select <include refid="Base_Column_List"/> from meeting_room r
+        where r.room_id not in (
+            select d.room_id from reservation_request_detail d
+              join reservation_request rq on rq.request_id = d.request_id
+             where rq.status = 'APPROVED'
+               and d.start_time &lt; #{endTime}
+               and d.end_time &gt; #{startTime}
+        )
+        and r.room_id not in (
+            select rr.room_id from room_reservation rr
+             where rr.start_time &lt; #{endTime}
+               and rr.end_time &gt; #{startTime}
+        )
+        order by r.room_id
+    </select>
+
+    <insert id="insertMeetingRoom" parameterType="com.ruoyi.meeting.domain.MeetingRoom">
+        insert into meeting_room (room_id, capacity, location, create_time)
+        values (#{roomId}, #{capacity}, #{location}, now())
+    </insert>
+
+    <update id="updateMeetingRoom" parameterType="com.ruoyi.meeting.domain.MeetingRoom">
+        update meeting_room
+        <set>
+            <if test="capacity != null">capacity=#{capacity},</if>
+            <if test="location != null">location=#{location},</if>
+            update_time = now()
+        </set>
+        where room_id = #{roomId}
+    </update>
+
+    <delete id="deleteMeetingRoomByRoomId" parameterType="String">
+        delete from meeting_room where room_id = #{roomId}
+    </delete>
+
+    <delete id="deleteMeetingRoomByRoomIds">
+        delete from meeting_room where room_id in
+        <foreach collection="array" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </delete>
+</mapper>
+

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.meeting.mapper.RoomReservationMapper">
+    <resultMap id="RoomReservationResult" type="com.ruoyi.meeting.domain.RoomReservation">
+        <id property="reserveId" column="reserve_id" />
+        <result property="adminId" column="admin_id" />
+        <result property="roomId" column="room_id" />
+        <result property="startTime" column="start_time" />
+        <result property="endTime" column="end_time" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">reserve_id, admin_id, room_id, start_time, end_time, create_time, update_time</sql>
+
+    <select id="selectRoomReservationByReserveId" parameterType="long" resultMap="RoomReservationResult">
+        select <include refid="Base_Columns"/> from room_reservation where reserve_id=#{reserveId}
+    </select>
+
+    <select id="selectRoomReservationList" resultMap="RoomReservationResult">
+        select <include refid="Base_Columns"/> from room_reservation
+        <where>
+            <if test="roomId != null and roomId != ''"> and room_id=#{roomId}</if>
+            <if test="adminId != null"> and admin_id=#{adminId}</if>
+        </where>
+        order by start_time desc
+    </select>
+
+    <insert id="insertRoomReservation" parameterType="com.ruoyi.meeting.domain.RoomReservation" useGeneratedKeys="true" keyProperty="reserveId">
+        insert into room_reservation(admin_id, room_id, start_time, end_time, create_time)
+        values(#{adminId}, #{roomId}, #{startTime}, #{endTime}, now())
+    </insert>
+
+    <insert id="batchInsert">
+        insert into room_reservation(admin_id, room_id, start_time, end_time, create_time) values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.adminId}, #{item.roomId}, #{item.startTime}, #{item.endTime}, now())
+        </foreach>
+    </insert>
+
+    <update id="updateRoomReservation" parameterType="com.ruoyi.meeting.domain.RoomReservation">
+        update room_reservation
+        <set>
+            <if test="roomId!=null">room_id=#{roomId},</if>
+            <if test="startTime!=null">start_time=#{startTime},</if>
+            <if test="endTime!=null">end_time=#{endTime},</if>
+            update_time=now()
+        </set>
+        where reserve_id=#{reserveId}
+    </update>
+
+    <delete id="deleteRoomReservationByReserveId" parameterType="long">
+        delete from room_reservation where reserve_id=#{reserveId}
+    </delete>
+
+    <delete id="deleteRoomReservationByReserveIds">
+        delete from room_reservation where reserve_id in
+        <foreach collection="array" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </delete>
+
+    <select id="countConflicts" resultType="int">
+        select count(1) from room_reservation
+         where room_id in
+           <foreach collection="roomIds" item="rid" open="(" close=")" separator=",">#{rid}</foreach>
+           and start_time &lt; #{endTime}
+           and end_time &gt; #{startTime}
+           <if test="excludeId != null"> and reserve_id != #{excludeId}</if>
+    </select>
+
+    <select id="listConflictDetails" resultType="com.ruoyi.meeting.domain.dto.ConflictDetailDTO">
+        select 'RESERVATION' as sourceType,
+               null as requestId,
+               reserve_id as reserveId,
+               room_id as roomId,
+               start_time as startTime,
+               end_time as endTime,
+               null as status
+          from room_reservation
+         where room_id = #{roomId}
+           and start_time &lt; #{endTime}
+           and end_time &gt; #{startTime}
+           <if test="excludeId != null"> and reserve_id != #{excludeId}</if>
+         order by start_time
+    </select>
+</mapper>

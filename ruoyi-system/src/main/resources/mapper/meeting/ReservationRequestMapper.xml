@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.meeting.mapper.ReservationRequestMapper">
+    <resultMap id="ReservationRequestResult" type="com.ruoyi.meeting.domain.ReservationRequest">
+        <id property="requestId" column="request_id" />
+        <result property="applicantId" column="applicant_id" />
+        <result property="status" column="status" />
+        <result property="adminId" column="admin_id" />
+        <result property="decisionTime" column="decision_time" />
+        <result property="decisionRemark" column="decision_remark" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+        <!-- 新增姓名映射 -->
+        <result property="applicantName" column="applicant_name" />
+        <result property="adminName" column="admin_name" />
+    </resultMap>
+
+    <sql id="Base_Columns">request_id, applicant_id, status, admin_id, decision_time, decision_remark, create_time, update_time</sql>
+
+    <select id="selectReservationRequestByRequestId" parameterType="long" resultMap="ReservationRequestResult">
+        select r.request_id, r.applicant_id, r.status, r.admin_id, r.decision_time, r.decision_remark, r.create_time, r.update_time,
+               ua.nick_name as applicant_name, ub.nick_name as admin_name
+          from reservation_request r
+          left join sys_user ua on ua.user_id = r.applicant_id
+          left join sys_user ub on ub.user_id = r.admin_id
+         where r.request_id=#{requestId}
+    </select>
+
+    <select id="selectReservationRequestList" resultMap="ReservationRequestResult">
+        select r.request_id, r.applicant_id, r.status, r.admin_id, r.decision_time, r.decision_remark, r.create_time, r.update_time,
+               ua.nick_name as applicant_name, ub.nick_name as admin_name
+          from reservation_request r
+          left join sys_user ua on ua.user_id = r.applicant_id
+          left join sys_user ub on ub.user_id = r.admin_id
+        <where>
+            <if test="requestId != null"> and r.request_id=#{requestId}</if>
+            <if test="applicantId != null"> and r.applicant_id=#{applicantId}</if>
+            <if test="status != null and status != ''"> and r.status=#{status}</if>
+        </where>
+        order by r.request_id desc
+    </select>
+
+    <insert id="insertReservationRequest" parameterType="com.ruoyi.meeting.domain.ReservationRequest" useGeneratedKeys="true" keyProperty="requestId">
+        insert into reservation_request(applicant_id,status,admin_id,decision_time,decision_remark,create_time,update_time)
+        values(#{applicantId},#{status},#{adminId},#{decisionTime},#{decisionRemark},now(),now())
+    </insert>
+
+    <update id="updateReservationRequest" parameterType="com.ruoyi.meeting.domain.ReservationRequest">
+        update reservation_request
+        <set>
+            <if test="status!=null">status=#{status},</if>
+            <if test="adminId!=null">admin_id=#{adminId},</if>
+            <if test="decisionTime!=null">decision_time=#{decisionTime},</if>
+            <if test="decisionRemark!=null">decision_remark=#{decisionRemark},</if>
+            update_time=now()
+        </set>
+        where request_id=#{requestId}
+    </update>
+
+    <delete id="deleteReservationRequestByRequestId" parameterType="long">
+        delete from reservation_request where request_id=#{requestId}
+    </delete>
+
+    <delete id="deleteReservationRequestByRequestIds">
+        delete from reservation_request where request_id in
+        <foreach collection="array" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </delete>
+
+    <update id="updateApproval">
+        update reservation_request set status=#{status}, admin_id=#{adminId}, decision_time=now(), decision_remark=#{decisionRemark}, update_time=now()
+        where request_id=#{requestId}
+    </update>
+
+    <update id="updateStatus">
+        update reservation_request set status=#{status}, admin_id=#{adminId}, decision_time=now(), decision_remark=#{decisionRemark}, update_time=now()
+        where request_id=#{requestId}
+    </update>
+</mapper>
