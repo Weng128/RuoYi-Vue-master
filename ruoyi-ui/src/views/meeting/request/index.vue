@@ -29,24 +29,28 @@
       <right-toolbar :showSearch.sync="showSearch" @queryTable="getList" />
     </el-row>
 
-    <el-table v-loading="loading" :data="list" @selection-change="handleSelectionChange">
-      <el-table-column type="selection" width="50" />
-      <el-table-column label="ID" prop="requestId" width="90" align="center" />
-      <el-table-column label="申请人" align="center">
+    <el-table v-loading="loading" :data="list">
+      <el-table-column label="ID" prop="requestId" width="70" align="center" />
+      <el-table-column label="申请人" width="70" align="center">
         <template slot-scope="scope">{{ scope.row.applicantName || scope.row.applicantId }}</template>
       </el-table-column>
-      <el-table-column label="审批人" align="center" width="120">
+      <el-table-column label="审批人" align="center" width="70">
         <template slot-scope="scope">{{ scope.row.adminName || (scope.row.adminId || '-') }}</template>
       </el-table-column>
-      <el-table-column label="审批时间" prop="decisionTime" width="170" align="center" />
-      <el-table-column label="会议室" width="130" align="center">
+      <el-table-column label="申请时间" width="140" align="center">
+        <template slot-scope="scope">{{ formatDateTime(scope.row.createTime || scope.row.create_time) }}</template>
+      </el-table-column>
+      <el-table-column label="审批时间" width="140" align="center">
+        <template slot-scope="scope">{{ formatDateTime(scope.row.decisionTime || scope.row.decision_time) }}</template>
+      </el-table-column>
+      <el-table-column label="审批意见" min-width="100" align="center" show-overflow-tooltip>
+        <template slot-scope="scope">{{ scope.row.decisionRemark || '-' }}</template>
+      </el-table-column>
+      <el-table-column label="会议室" width="70" align="center">
         <template slot-scope="scope">{{ getRoomsText(scope.row.requestId) }}</template>
       </el-table-column>
-      <el-table-column label="开始时间" width="170" align="center">
-        <template slot-scope="scope">{{ getStartText(scope.row.requestId) }}</template>
-      </el-table-column>
-      <el-table-column label="结束时间" width="170" align="center">
-        <template slot-scope="scope">{{ getEndText(scope.row.requestId) }}</template>
+      <el-table-column label="预约时间" width="260" align="center">
+        <template slot-scope="scope">{{ getReservationRange(scope.row.requestId) }}</template>
       </el-table-column>
       <el-table-column label="状态" prop="status" width="100" align="center">
         <template slot-scope="scope">
@@ -55,9 +59,8 @@
           <el-tag v-else type="danger">已拒绝</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="更新时间" prop="updateTime" width="170" align="center" />
-      <el-table-column label="备注" prop="remark" min-width="120" show-overflow-tooltip />
-      <el-table-column label="操作" width="200" align="center" class-name="small-padding fixed-width">
+      <el-table-column label="用途" prop="remark" min-width="120" show-overflow-tooltip />
+  <el-table-column label="操作" width="130" align="center" class-name="small-padding fixed-width">
         <template slot-scope="scope">
           <el-button size="mini" type="text" icon="el-icon-circle-check" @click="openApprove(scope.row)" :disabled="(scope.row.status||'')!=='PENDING'">审批</el-button>
           <el-button size="mini" type="text" icon="el-icon-close" @click="openReject(scope.row)" :disabled="(scope.row.status||'')!=='PENDING'">拒绝</el-button>
@@ -90,7 +93,7 @@
               <el-option v-for="h in hoursOptions" :key="'sh-'+h" :label="h" :value="h" />
             </el-select>
             <el-select v-model="approveForm.startMinute" placeholder="分钟" style="width:88px; margin-left:8px">
-              <el-option v-for="m in minutes5Options" :key="'sm-'+m" :label="m" :value="m" />
+              <el-option v-for="m in minutes10Options" :key="'sm-'+m" :label="m" :value="m" />
             </el-select>
           </div>
         </el-form-item>
@@ -101,7 +104,7 @@
               <el-option v-for="h in hoursOptions" :key="'eh-'+h" :label="h" :value="h" />
             </el-select>
             <el-select v-model="approveForm.endMinute" placeholder="分钟" style="width:88px; margin-left:8px">
-              <el-option v-for="m in minutes5Options" :key="'em-'+m" :label="m" :value="m" />
+              <el-option v-for="m in minutes10Options" :key="'em-'+m" :label="m" :value="m" />
             </el-select>
           </div>
         </el-form-item>
@@ -144,14 +147,14 @@ export default {
   name:'RequestApprove',
   data(){
     return {
-      loading:false, showSearch:true, list:[], total:0, ids:[], single:true, multiple:true,
+  loading:false, showSearch:true, list:[], total:0,
       queryParams:{ pageNum:1, pageSize:10, applicantName:null, status:null, roomId:null, timeRange:[] },
       detailOpen:false, detailList:[],
       approveOpen:false,
       approveForm:{ requestId:null, roomIds:[], range:[], startDate:'', startHour:'', startMinute:'', endDate:'', endHour:'', endMinute:'', decisionRemark:'', title:'审批申请' },
       // 小时与分钟选项
       hoursOptions: Array.from({length:24}, (_,i)=> (i<10? '0'+i : ''+i)),
-      minutes5Options: Array.from({length:12}, (_,i)=> { const v=i*5; return v<10? '0'+v: ''+v }),
+      minutes10Options: Array.from({ length:6 }, (_, i)=> { const v = i * 10; return v<10 ? '0'+v : ''+v }),
       // 近一月日期限制
       recentMonthOptions:{
         disabledDate:(time)=>{
@@ -193,15 +196,19 @@ export default {
   methods:{
     // 解析 yyyy-MM-dd HH:mm(:ss) 或 10/13位时间戳
     parseTs(v){ if(v==null) return NaN; if(typeof v==='number') return v>1e12?v:v*1000; const s=String(v).trim(); if(/^\d{10}$/.test(s)) return parseInt(s,10)*1000; if(/^\d{13}$/.test(s)) return parseInt(s,10); const iso=Date.parse(s.replace(' ','T')); if(!isNaN(iso)) return iso; return Date.parse(s.replace(/-/g,'/')); },
-    // 新增：将分钟值按5分钟步进对齐（floor/ceil/round），返回两位字符串
-    roundMinute5(min, mode){
-      const n = Number(min);
+    // 将分钟值按指定步进（默认10分钟）对齐，返回两位字符串
+    roundMinuteStep(min, mode, stepMinutes = 10){
+      const step = Math.max(1, Number(stepMinutes) || 10)
+      const n = Number(min)
       if(!isFinite(n) || n < 0) return '00'
-      let v;
-      if(mode==='ceil') { v = Math.ceil(n/5)*5; if(v>55) v=55 }
-      else if(mode==='floor') { v = Math.floor(n/5)*5 }
-      else { v = Math.round(n/5)*5; if(v>55) v=55 }
-      return v < 10 ? '0'+v : ''+v
+      let v
+      if(mode === 'ceil') { v = Math.ceil(n / step) * step }
+      else if(mode === 'floor') { v = Math.floor(n / step) * step }
+      else { v = Math.round(n / step) * step }
+      const max = 60 - step
+      if(v > max) v = max
+      if(v < 0) v = 0
+      return v < 10 ? '0' + v : '' + v
     },
     loadRooms(){ listRoom({pageNum:1,pageSize:500}).then(r=>{ this.roomOptions=r.rows||[] }) },
     getList(){
@@ -263,10 +270,37 @@ export default {
     prefetchDetails(){ (this.list||[]).forEach(row=> this.fetchDetails(row.requestId)) },
     fetchDetails(requestId){ if(!requestId||this.detailsMap[requestId]) return; listDetails(requestId).then(r=>{ this.$set(this.detailsMap, requestId, (r.data||r.rows||[])) }).catch(()=>{ this.$set(this.detailsMap, requestId, []) }) },
     getRoomsText(requestId){ const list = this.detailsMap[requestId]; if(!list) return '加载中...'; if(!list.length) return '-'; const set = Array.from(new Set(list.map(i=> i.roomId))).filter(Boolean); return set.join('、') },
-    getStartText(requestId){ const list = this.detailsMap[requestId]; if(!list) return '加载中...'; if(!list.length) return '-'; const starts = list.map(i=> i.startTime).filter(Boolean); const allSame = starts.every(s=> s===starts[0]); return allSame ? starts[0] : '多时段' },
-    getEndText(requestId){ const list = this.detailsMap[requestId]; if(!list) return '加载中...'; if(!list.length) return '-'; const ends = list.map(i=> i.endTime).filter(Boolean); const allSame = ends.every(s=> s===ends[0]); return allSame ? ends[0] : '多时段' },
+    getReservationRange(requestId){
+      const list = this.detailsMap[requestId]
+      if(!list) return '加载中...'
+      if(!list.length) return '-'
+      let earliest = null
+      let latest = null
+      list.forEach(item=>{
+        if(!item) return
+        const startVal = item.startTime || item.start_time
+        const endVal = item.endTime || item.end_time
+        const startTs = this.parseTs(startVal)
+        const endTs = this.parseTs(endVal)
+        if(isFinite(startTs) && (!earliest || startTs < earliest.ts)){
+          earliest = { ts: startTs, text: startVal }
+        }
+        if(isFinite(endTs) && (!latest || endTs > latest.ts)){
+          latest = { ts: endTs, text: endVal }
+        }
+      })
+      if(!earliest || !latest) return '-'
+      return `${this.formatDateTime(earliest.text)} ~ ${this.formatDateTime(latest.text)}`
+    },
+    formatDateTime(value){
+      if(!value) return '-'
+      const ts = this.parseTs(value)
+      if(!isFinite(ts)) return String(value)
+      const d = new Date(ts)
+      const pad = n=> (n<10?'0':'')+n
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    },
 
-    handleSelectionChange(sel){ this.ids=sel.map(i=>i.requestId); this.single=sel.length!==1; this.multiple=!sel.length },
     handleQuery(){ this.queryParams.pageNum=1; this.getList() },
     resetQuery(){ this.resetForm('queryForm'); this.handleQuery() },
 
@@ -287,9 +321,9 @@ export default {
             // 钳制日期到近一月窗口
             this.approveForm.startDate=this.clampToRecentMonth(s.d)
             this.approveForm.endDate=this.clampToRecentMonth(e.d)
-            // 分钟按5分步进对齐：开始向下取整，结束向上取整
-            this.approveForm.startHour=s.h; this.approveForm.startMinute=this.roundMinute5(s.m, 'floor')
-            this.approveForm.endHour=e.h; this.approveForm.endMinute=this.roundMinute5(e.m, 'ceil')
+            // 分钟按10分步进对齐：开始向下取整，结束向上取整
+            this.approveForm.startHour=s.h; this.approveForm.startMinute=this.roundMinuteStep(s.m, 'floor', 10)
+            this.approveForm.endHour=e.h; this.approveForm.endMinute=this.roundMinuteStep(e.m, 'ceil', 10)
           }
           // 房间默认选中为申请所含房间
           this.approveForm.roomIds=[...new Set(d.map(i=> i && i.roomId != null ? String(i.roomId) : '').filter(Boolean))]

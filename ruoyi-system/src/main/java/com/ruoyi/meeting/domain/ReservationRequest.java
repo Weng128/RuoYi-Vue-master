@@ -44,6 +44,18 @@ public class ReservationRequest extends BaseEntity
     /** 审批人姓名 */
     private String adminName;
 
+    @Override
+    public String getRemark()
+    {
+        return super.getRemark();
+    }
+
+    @Override
+    public void setRemark(String remark)
+    {
+        super.setRemark(remark);
+    }
+
     public void setRequestId(Long requestId) 
     {
         this.requestId = requestId;
@@ -118,6 +130,7 @@ public class ReservationRequest extends BaseEntity
             .append("adminId", getAdminId())
             .append("decisionTime", getDecisionTime())
             .append("decisionRemark", getDecisionRemark())
+            .append("remark", getRemark())
             .append("applicantName", getApplicantName())
             .append("adminName", getAdminName())
             .append("createTime", getCreateTime())

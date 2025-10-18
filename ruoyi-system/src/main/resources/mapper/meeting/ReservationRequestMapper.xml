@@ -7,7 +7,8 @@
         <result property="status" column="status" />
         <result property="adminId" column="admin_id" />
         <result property="decisionTime" column="decision_time" />
-        <result property="decisionRemark" column="decision_remark" />
+    <result property="decisionRemark" column="decision_remark" />
+    <result property="remark" column="remark" />
         <result property="createTime" column="create_time" />
         <result property="updateTime" column="update_time" />
         <!-- 新增姓名映射 -->
@@ -15,10 +16,10 @@
         <result property="adminName" column="admin_name" />
     </resultMap>
 
-    <sql id="Base_Columns">request_id, applicant_id, status, admin_id, decision_time, decision_remark, create_time, update_time</sql>
+    <sql id="Base_Columns">request_id, applicant_id, status, admin_id, decision_time, decision_remark, remark, create_time, update_time</sql>
 
     <select id="selectReservationRequestByRequestId" parameterType="long" resultMap="ReservationRequestResult">
-        select r.request_id, r.applicant_id, r.status, r.admin_id, r.decision_time, r.decision_remark, r.create_time, r.update_time,
+    select r.request_id, r.applicant_id, r.status, r.admin_id, r.decision_time, r.decision_remark, r.remark, r.create_time, r.update_time,
                ua.nick_name as applicant_name, ub.nick_name as admin_name
           from reservation_request r
           left join sys_user ua on ua.user_id = r.applicant_id
@@ -27,7 +28,7 @@
     </select>
 
     <select id="selectReservationRequestList" resultMap="ReservationRequestResult">
-        select r.request_id, r.applicant_id, r.status, r.admin_id, r.decision_time, r.decision_remark, r.create_time, r.update_time,
+    select r.request_id, r.applicant_id, r.status, r.admin_id, r.decision_time, r.decision_remark, r.remark, r.create_time, r.update_time,
                ua.nick_name as applicant_name, ub.nick_name as admin_name
           from reservation_request r
           left join sys_user ua on ua.user_id = r.applicant_id
@@ -41,8 +42,8 @@
     </select>
 
     <insert id="insertReservationRequest" parameterType="com.ruoyi.meeting.domain.ReservationRequest" useGeneratedKeys="true" keyProperty="requestId">
-        insert into reservation_request(applicant_id,status,admin_id,decision_time,decision_remark,create_time,update_time)
-        values(#{applicantId},#{status},#{adminId},#{decisionTime},#{decisionRemark},now(),now())
+    insert into reservation_request(applicant_id,status,admin_id,decision_time,decision_remark,remark,create_time,update_time)
+    values(#{applicantId},#{status},#{adminId},#{decisionTime},#{decisionRemark},#{remark},now(),now())
     </insert>
 
     <update id="updateReservationRequest" parameterType="com.ruoyi.meeting.domain.ReservationRequest">
@@ -52,6 +53,7 @@
             <if test="adminId!=null">admin_id=#{adminId},</if>
             <if test="decisionTime!=null">decision_time=#{decisionTime},</if>
             <if test="decisionRemark!=null">decision_remark=#{decisionRemark},</if>
+            <if test="remark!=null">remark=#{remark},</if>
             update_time=now()
         </set>
         where request_id=#{requestId}

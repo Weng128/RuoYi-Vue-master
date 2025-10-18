@@ -1,7 +1,14 @@
 <template>
   <div class="app-container meeting-room-page">
     <el-row :gutter="16" class="room-layout">
-      <el-col :span="16" class="room-left">
+      <el-col
+        :xs="24"
+        :sm="24"
+        :md="14"
+        :lg="14"
+        :xl="13"
+        class="room-left"
+      >
         <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
           <el-form-item label="会议室" prop="roomId">
             <el-input v-model="queryParams.roomId" placeholder="会议室编号" clearable @keyup.enter.native="handleQuery" />
@@ -27,22 +34,45 @@
           </el-col>
         </el-row>
 
-        <el-table ref="roomTable" v-loading="loading" :data="roomList" @selection-change="handleSelectionChange">
+        <el-table
+          ref="roomTable"
+          v-loading="loading"
+          :data="roomList"
+          highlight-current-row
+          :row-class-name="rowClassName"
+          @selection-change="handleSelectionChange"
+          @row-click="handleRowClick"
+        >
           <el-table-column type="selection" width="55" align="center" />
           <el-table-column label="会议室编号" align="center" prop="roomId" />
           <el-table-column label="容量" align="center" prop="capacity" width="90" />
-          <el-table-column label="位置" align="center" prop="location" />
           <el-table-column label="状态" align="center" width="100">
             <template slot-scope="scope">
               <el-tag v-if="!canSeeOccupy" type="info">无权限</el-tag>
               <template v-else>
                 <el-tag v-if="occupyMap[scope.row.roomId] && occupyMap[scope.row.roomId].loading" type="info">加载中</el-tag>
+                <el-tooltip
+                  v-else-if="currentOccupyInfos[scope.row.roomId]"
+                  placement="top"
+                  effect="dark"
+                  :open-delay="150"
+                >
+                  <template #content>
+                    <div class="occupy-tooltip">
+                      <div>申请人：{{ currentOccupyInfos[scope.row.roomId].applicant }}</div>
+                      <div>审批人：{{ currentOccupyInfos[scope.row.roomId].approver }}</div>
+                      <div>开始时间：{{ currentOccupyInfos[scope.row.roomId].start }}</div>
+                      <div>结束时间：{{ currentOccupyInfos[scope.row.roomId].end }}</div>
+                    </div>
+                  </template>
+                  <el-tag type="danger">占用中</el-tag>
+                </el-tooltip>
                 <el-tag v-else-if="isOccupiedNow(scope.row.roomId)" type="danger">占用中</el-tag>
                 <el-tag v-else type="success">空闲</el-tag>
               </template>
             </template>
           </el-table-column>
-          <el-table-column label="占用时段" align="left" min-width="320">
+          <el-table-column label="占用时段" align="left" min-width="290">
             <template slot-scope="scope">
               <div class="occupy-cell" v-loading="occupyMap[scope.row.roomId] && occupyMap[scope.row.roomId].loading">
                 <template v-if="!canSeeOccupy">
@@ -62,7 +92,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+          <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="120">
             <template slot-scope="scope">
               <el-button size="mini" type="text" icon="el-icon-edit" @click="handleUpdate(scope.row)" v-hasPermi="['meeting:room:edit']">修改</el-button>
               <el-button size="mini" type="text" icon="el-icon-delete" @click="handleDelete(scope.row)" v-hasPermi="['meeting:room:remove']">删除</el-button>
@@ -72,10 +102,20 @@
 
         <pagination v-show="total>0" :total="total" :page.sync="queryParams.pageNum" :limit.sync="queryParams.pageSize" @pagination="getList" />
       </el-col>
-      <el-col :span="8" class="room-right">
+      <el-col
+        :xs="24"
+        :sm="24"
+        :md="10"
+        :lg="10"
+        :xl="11"
+        class="room-right"
+      >
         <el-card shadow="never" class="schedule-card">
           <div slot="header" class="schedule-header">
-            <span>未来三日会议室日程</span>
+            <div class="schedule-header-left">
+              <span>未来三日会议室空闲情况</span>
+              <span v-if="canSeeOccupy" class="schedule-context">{{ scheduleContextLabel }}</span>
+            </div>
             <el-button v-if="canSeeOccupy" type="text" icon="el-icon-refresh" @click="refreshSchedule" :loading="scheduleLoading">刷新</el-button>
           </div>
           <template v-if="!canSeeOccupy">
@@ -84,20 +124,19 @@
           <template v-else>
             <el-skeleton v-if="scheduleLoading && !hasScheduleContent" rows="6" animated />
             <div v-else class="schedule-body">
-              <div v-for="day in scheduleDays" :key="day.date" class="schedule-day">
-                <div class="schedule-day-title">{{ day.label }}</div>
-                <template v-if="day.records.length">
-                  <el-timeline>
-                    <el-timeline-item v-for="(item, idx) in day.records" :key="idx" :timestamp="item.timeRange" placement="top">
-                      <div class="schedule-item">
-                        <div class="schedule-item-room">{{ item.roomId }}</div>
-                        <div v-if="item.remark" class="schedule-item-remark">{{ item.remark }}</div>
-                      </div>
-                    </el-timeline-item>
-                  </el-timeline>
-                </template>
-                <el-empty v-else class="schedule-empty" description="暂无安排" />
+              <div v-if="scheduleDays.length" class="schedule-days-wrap">
+                <div v-for="day in scheduleDays" :key="day.date" class="schedule-day-box">
+                  <div class="schedule-day-title">{{ day.label }}</div>
+                  <div class="schedule-day-content">
+                    <div v-for="(item, idx) in day.records" :key="idx" class="schedule-item">
+                      <div class="schedule-item-time">{{ item.timeRange }}</div>
+                      <div v-if="!selectedRoomId" class="schedule-item-room">会议室：{{ item.roomId }}</div>
+                      <div class="schedule-item-remark">{{ item.remark || '已占用' }}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
+              <el-empty v-else class="schedule-empty" description="近三日暂无占用安排" />
             </div>
           </template>
         </el-card>
@@ -174,9 +213,10 @@ export default {
       loading: false,
       ids: [], single: true, multiple: true,
       showSearch: true,
-      total: 0,
-      roomList: [],
-      title: '', open: false,
+    total: 0,
+    roomList: [],
+    selectedRoomId: null,
+    title: '', open: false,
       queryParams: { pageNum: 1, pageSize: 10, roomId:null, capacity: null, location: null },
       form: { roomId: null, capacity: null, location: null },
       isEdit: false,
@@ -210,23 +250,33 @@ export default {
     hasDetailListPerm(){ return checkPermi(['meeting:detail:list']) },
     // 只要具备任一权限即可展示占用
     canSeeOccupy(){ return this.hasResvListPerm || this.hasDetailListPerm },
+    scheduleContextLabel(){
+      if(!this.canSeeOccupy) return ''
+      return this.selectedRoomId ? `当前查看：会议室 ${this.selectedRoomId}` : '当前查看：全部会议室'
+    },
     scheduleDays(){
       if(!this.canSeeOccupy) return []
       const result = []
       const dayMs = 24 * 60 * 60 * 1000
       const baseDate = this.startOfDay(new Date())
       const baseTs = baseDate.getTime()
-      const orderMap = {}
       const rooms = Array.isArray(this.roomList) ? this.roomList : []
+      const orderMap = {}
       rooms.forEach((room, idx)=>{
         if(room && room.roomId != null) orderMap[room.roomId] = idx
       })
+      const targetRooms = this.selectedRoomId
+        ? [this.selectedRoomId]
+        : rooms.map(room=>room && room.roomId).filter(id=>id)
+      const fallbackRooms = Object.keys(this.occupyMap || {})
+      const resolvedRooms = targetRooms.length ? targetRooms : fallbackRooms
       for(let offset=0; offset<3; offset++){
         const dayStart = baseTs + offset * dayMs
         const dayEnd = dayStart + dayMs
         const dayRecords = []
-        Object.keys(this.occupyMap || {}).forEach(roomId=>{
-          const entry = this.occupyMap[roomId]
+        resolvedRooms.forEach(roomId=>{
+          if(!roomId) return
+          const entry = this.occupyMap && this.occupyMap[roomId]
           const list = entry && Array.isArray(entry.list) ? entry.list : []
           list.forEach(item=>{
             if(item){
@@ -238,8 +288,9 @@ export default {
             const endTs = this.parseTs(item && item.endTime)
             if(!isFinite(startTs) || !isFinite(endTs)) return
             if(endTs <= dayStart || startTs >= dayEnd) return
+            const roomKey = item && item.roomId != null ? item.roomId : roomId
             dayRecords.push({
-              roomId,
+              roomId: roomKey,
               rawStart: Math.max(startTs, dayStart),
               rawEnd: Math.min(endTs, dayEnd),
               originalStart: startTs,
@@ -248,6 +299,7 @@ export default {
             })
           })
         })
+        if(!dayRecords.length) continue
         dayRecords.sort((a,b)=>{
           const orderA = Object.prototype.hasOwnProperty.call(orderMap, a.roomId) ? orderMap[a.roomId] : Number.MAX_SAFE_INTEGER
           const orderB = Object.prototype.hasOwnProperty.call(orderMap, b.roomId) ? orderMap[b.roomId] : Number.MAX_SAFE_INTEGER
@@ -273,23 +325,76 @@ export default {
     },
     scheduleLoading(){
       if(!this.canSeeOccupy) return false
-      const map = this.occupyMap || {}
-      const keys = Object.keys(map)
-      if(!keys.length) return this.loading
-      return keys.some(key=> map[key] && map[key].loading)
+      const rooms = Array.isArray(this.roomList) ? this.roomList : []
+      const initialRooms = this.selectedRoomId
+        ? [this.selectedRoomId]
+        : rooms.map(room=>room && room.roomId).filter(id=>id)
+      const fallbackRooms = Object.keys(this.occupyMap || {})
+      const targetRooms = initialRooms.length ? initialRooms : fallbackRooms
+      if(!targetRooms.length) return this.loading
+      return targetRooms.some(roomId=>{
+        const entry = this.occupyMap && this.occupyMap[roomId]
+        return !entry || !!entry.loading
+      })
     },
     hasScheduleContent(){
-      if(!this.canSeeOccupy) return false
-      return this.scheduleDays.some(day=>Array.isArray(day.records) && day.records.length)
+      return this.canSeeOccupy && this.scheduleDays.length > 0
+    },
+    currentOccupyInfos(){
+      const result = Object.create(null)
+      if(!this.canSeeOccupy) return result
+      const map = this.occupyMap || {}
+      const now = Date.now()
+      Object.keys(map).forEach(roomId=>{
+        const info = this.computeCurrentOccupyInfo(roomId, now)
+        if(info) result[roomId] = info
+      })
+      return result
     }
   },
   // 移除与时段筛选相关的计算属性与监听
   created() { this.getList() },
   watch:{
     // 当会议室选择变化时，刷新占用信息
-    'applyForm.roomIds': function(){ this.loadApplyOccupy() }
+    'applyForm.roomIds': function(){ this.loadApplyOccupy() },
+    selectedRoomId(val){
+      if(val && this.canSeeOccupy){
+        const entry = this.occupyMap && this.occupyMap[val]
+        const shouldFetch = !entry || (!entry.fetched && !entry.loading)
+        if(shouldFetch){
+        this.fetchRoomOccupy(val)
+        }
+      }
+      this.$nextTick(()=> this.syncCurrentRow())
+    },
+    canSeeOccupy(val){
+      if(!val && this.selectedRoomId != null){
+        this.selectedRoomId = null
+      }
+    },
+    roomList(list){
+      const exists = Array.isArray(list) && list.some(item=>item && item.roomId === this.selectedRoomId)
+      if(!exists && this.selectedRoomId != null){
+        this.selectedRoomId = null
+      } else {
+        this.$nextTick(()=> this.syncCurrentRow())
+      }
+    }
   },
   methods: {
+    syncCurrentRow(){
+      if(!this.$refs.roomTable) return
+      const rows = Array.isArray(this.roomList) ? this.roomList : []
+      const target = rows.find(item=>item && item.roomId === this.selectedRoomId) || null
+      this.$refs.roomTable.setCurrentRow(target)
+    },
+    handleRowClick(row){
+      if(!row || !row.roomId) return
+      this.selectedRoomId = this.selectedRoomId === row.roomId ? null : row.roomId
+    },
+    rowClassName({ row }){
+      return row && row.roomId === this.selectedRoomId ? 'is-selected-room' : ''
+    },
     // 统一解析后端返回的时间字符串（如：yyyy-MM-dd HH:mm 或 yyyy-MM-dd HH:mm:ss）为时间戳
     parseTs(str){
       if(str == null) return NaN
@@ -311,6 +416,7 @@ export default {
           this.roomList = r && r.rows ? r.rows : [];
           this.total = r && r.total ? r.total : 0;
           this.prefetchOccupy();
+          this.$nextTick(()=> this.syncCurrentRow())
         })
         .catch(e=>{ console.error(e); this.roomList=[]; this.total=0; this.$modal && this.$modal.msgError && this.$modal.msgError('加载失败') })
         .finally(()=>{ this.loading=false })
@@ -323,16 +429,23 @@ export default {
     },
     refreshSchedule(){
       if(!this.canSeeOccupy) return
-      this.prefetchOccupy()
+      if(this.selectedRoomId){
+        this.fetchRoomOccupy(this.selectedRoomId)
+      } else {
+        this.prefetchOccupy()
+      }
     },
     fetchRoomOccupy(roomId){
       if(!roomId) return
       if(!this.canSeeOccupy){
-        this.$set(this.occupyMap, roomId, { loading:false, list:[] })
+        this.$set(this.occupyMap, roomId, { loading:false, list:[], fetched:true })
         return
       }
-      if(!this.occupyMap[roomId]) this.$set(this.occupyMap, roomId, { loading:true, list:[] })
-      else this.occupyMap[roomId].loading = true
+      if(!this.occupyMap[roomId]) this.$set(this.occupyMap, roomId, { loading:true, list:[], fetched:false })
+      else {
+        this.occupyMap[roomId].loading = true
+        this.occupyMap[roomId].fetched = false
+      }
 
       const tasks = []
       if(this.hasResvListPerm){
@@ -349,9 +462,9 @@ export default {
         // 只保留已通过
         const approved = merged.filter(this.isApprovedRow)
         approved.sort((a,b)=> this.parseTs(a.startTime) - this.parseTs(b.startTime))
-        this.$set(this.occupyMap, roomId, { loading:false, list: approved })
+        this.$set(this.occupyMap, roomId, { loading:false, list: approved, fetched:true })
       }).catch(()=>{
-        this.$set(this.occupyMap, roomId, { loading:false, list:[] })
+        this.$set(this.occupyMap, roomId, { loading:false, list:[], fetched:true })
       })
     },
     // 仅返回“当前及未来”的占用，使用统一解析，多个时段全部展示
@@ -485,6 +598,62 @@ export default {
       if(offset === 2) return `后天 ${base} (周${week})`
       return `${base} (周${week})`
     },
+    computeCurrentOccupyInfo(roomId, nowTs){
+      if(!roomId || !this.occupyMap) return null
+      const entry = this.occupyMap[roomId]
+      const list = entry && Array.isArray(entry.list) ? entry.list : []
+      if(!list.length) return null
+      const now = typeof nowTs === 'number' ? nowTs : Date.now()
+      let target = null
+      for(const item of list){
+        if(!item) continue
+        const startTs = this.parseTs(item.startTime != null ? item.startTime : item.start_time)
+        const endTs = this.parseTs(item.endTime != null ? item.endTime : item.end_time)
+        if(!isFinite(startTs) || !isFinite(endTs)) continue
+        if(startTs <= now && now < endTs){
+          target = { item, startTs, endTs }
+          break
+        }
+      }
+      if(!target) return null
+      const { item, startTs, endTs } = target
+      const applicant = this.pickFirstNonEmpty(item, ['applicantName','applicant','applyUser','apply_user','userName','user_name'])
+      const approver = this.pickFirstNonEmpty(item, ['adminName','approverName','approver','approveUser','approve_user','handlerName','handler_name'])
+      const rawStart = item.startTime != null ? item.startTime : item.start_time
+      const rawEnd = item.endTime != null ? item.endTime : item.end_time
+      const startValue = rawStart != null && rawStart !== '' ? rawStart : startTs
+      const endValue = rawEnd != null && rawEnd !== '' ? rawEnd : endTs
+      return {
+        applicant: applicant || '--',
+        approver: approver || '--',
+        start: this.formatDateTimeString(startValue),
+        end: this.formatDateTimeString(endValue)
+      }
+    },
+    pickFirstNonEmpty(obj, keys){
+      if(!obj || !Array.isArray(keys)) return ''
+      for(const key of keys){
+        if(!key) continue
+        const val = obj[key]
+        if(val === undefined || val === null) continue
+        const str = String(val).trim()
+        if(str) return str
+      }
+      return ''
+    },
+    formatDateTimeString(value){
+      if(value == null || value === '') return '--'
+      const ts = this.parseTs(value)
+      if(!isFinite(ts)) return String(value)
+      const d = new Date(ts)
+      if(isNaN(d.getTime())) return String(value)
+      const y = d.getFullYear()
+      const m = `${d.getMonth() + 1}`.padStart(2,'0')
+      const day = `${d.getDate()}`.padStart(2,'0')
+      const h = `${d.getHours()}`.padStart(2,'0')
+      const min = `${d.getMinutes()}`.padStart(2,'0')
+      return `${y}-${m}-${day} ${h}:${min}`
+    },
     resolveRemark(item){
       if(!item) return ''
       const remark = item.remark || item.reason || item.purpose || item.applyReason || item.title || ''
@@ -510,6 +679,7 @@ export default {
 .room-right {
   display: flex;
   flex-direction: column;
+  min-width: 360px;
 }
 
 .action-bar {
@@ -549,32 +719,81 @@ export default {
   font-weight: 600;
 }
 
+.schedule-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-context {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 400;
+}
+
 .schedule-body {
   flex: 1;
-  overflow-y: auto;
-  max-height: calc(100vh - 220px);
-  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.schedule-day + .schedule-day {
-  margin-top: 16px;
+.schedule-days-wrap {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  align-items: stretch;
+}
+.schedule-day-box {
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
+  align-items: stretch;
 }
 
-.schedule-day-title {
-  font-size: 14px;
+.schedule-day-box {
+  min-width: 0;
+  background: #f9fafc;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schedule-day-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schedule-item {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 1px 2px rgba(31, 35, 41, 0.04);
+}
+
+.schedule-item-time {
   font-weight: 600;
-  margin-bottom: 8px;
   color: #303133;
 }
 
 .schedule-item-room {
-  font-weight: 600;
-  margin-bottom: 4px;
+  color: #606266;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .schedule-item-remark {
   color: #909399;
   font-size: 12px;
+  margin-top: 4px;
 }
 
 .schedule-empty {
@@ -595,13 +814,36 @@ export default {
   margin-top: 4px;
 }
 
+.occupy-tooltip {
+  min-width: 220px;
+  line-height: 1.6;
+  font-size: 12px;
+}
+
+::v-deep .is-selected-room > td {
+  background-color: #f5f7fa !important;
+}
+
 @media (max-width: 1200px) {
   .room-right {
     margin-top: 16px;
+    min-width: auto;
   }
 
   .schedule-body {
     max-height: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .schedule-days-wrap {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  .schedule-days-wrap {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
 </style>

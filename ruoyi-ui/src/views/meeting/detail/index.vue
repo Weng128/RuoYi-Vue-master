@@ -2,9 +2,6 @@
   <div class="app-container">
     <!-- 查询条件 -->
     <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="80px">
-      <el-form-item label="申请人" prop="applicantName">
-        <el-input v-model="queryParams.applicantName" placeholder="请输入申请人名字" clearable @keyup.enter.native="handleQuery" />
-      </el-form-item>
       <el-form-item label="会议室" prop="roomId">
         <el-input v-model="queryParams.roomId" placeholder="请输入会议室编号" clearable @keyup.enter.native="handleQuery" />
       </el-form-item>
@@ -22,19 +19,15 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="2.5">
-        <el-button type="primary" plain icon="el-icon-s-promotion" size="mini" @click="openRoomInfo">申请会议室</el-button>
+        <el-button type="primary" plain icon="el-icon-s-promotion" size="mini" @click="openRoomInfo">预约会议室</el-button>
       </el-col>
       <right-toolbar :showSearch.sync="showSearch" @queryTable="getList" />
     </el-row>
 
-    <el-table v-loading="loading" :data="detailList" @selection-change="handleSelectionChange">
-      <el-table-column type="selection" width="50" align="center" />
-      <el-table-column label="申请ID" prop="requestId" width="90" align="center" />
-      <el-table-column label="会议室" prop="roomId" width="120" align="center" />
-      <el-table-column label="申请人" width="110" align="center">
-        <template slot-scope="scope">{{ scope.row.applicantName || '-' }}</template>
-      </el-table-column>
-      <el-table-column label="审批状态" width="110" align="center">
+  <el-table  v-loading="loading" :data="detailList" @selection-change="handleSelectionChange">
+      <el-table-column label="申请ID" prop="requestId" width="70" align="center" />
+      <el-table-column label="会议室" prop="roomId" width="70" align="center" />
+      <el-table-column label="审批状态" width="80" align="center">
         <template slot-scope="scope">
           <el-tag v-if="scope.row.status==='PENDING'" type="warning">待审批</el-tag>
           <el-tag v-else-if="scope.row.status==='APPROVED'" type="success">已通过</el-tag>
@@ -42,15 +35,25 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column label="审批人" width="110" align="center">
+      <el-table-column label="审批人" width="70" align="center">
         <template slot-scope="scope">{{ scope.row.adminName || '-' }}</template>
       </el-table-column>
-      <el-table-column label="开始时间" prop="startTime" width="180" align="center" />
-      <el-table-column label="结束时间" prop="endTime" width="180" align="center" />
-      <el-table-column label="更新时间" prop="updateTime" width="180" align="center">
+      <el-table-column label="预约时间" width="300" align="center">
+        <template slot-scope="scope">{{ displayTimeRange(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="160" align="center">
+        <template slot-scope="scope">{{ displayCreate(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="审批时间" prop="updateTime" width="160" align="center">
         <template slot-scope="scope">{{ displayUpdate(scope.row) }}</template>
       </el-table-column>
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="160">
+      <el-table-column label="审批意见" min-width="100" align="center" show-overflow-tooltip>
+        <template slot-scope="scope">{{ displayDecisionRemark(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="用途" min-width="100" align="center" show-overflow-tooltip>
+        <template slot-scope="scope">{{ displayPurpose(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="100">
         <template slot-scope="scope">
           <el-button size="mini" type="text" icon="el-icon-edit" @click="handleUpdate(scope.row)" :disabled="scope.row.status==='APPROVED'" v-hasPermi="['meeting:detail:edit']">修改</el-button>
           <el-button size="mini" type="text" icon="el-icon-delete" @click="handleDelete(scope.row)" :disabled="scope.row.status==='APPROVED'" v-hasPermi="['meeting:detail:remove']">删除</el-button>
@@ -81,15 +84,14 @@
       </div>
     </el-dialog>
 
-    <!-- 会议室信息对话框 -->
-    <el-dialog title="会议室信息" :visible.sync="roomInfoOpen" width="980px" append-to-body>
+    <!-- 会议室空闲情况对话框 -->
+    <el-dialog title="会议室占用情况" :visible.sync="roomInfoOpen" width="1140px" append-to-body>
       <div class="room-info-content">
-        <el-row :gutter="16">
-          <el-col :span="14" class="room-info-left">
-            <el-table :data="roomList" v-loading="roomLoading" size="small" row-key="roomId">
+        <el-row :gutter="20" type="flex" justify="space-between">
+          <el-col :span="8" class="room-info-left">
+            <el-table ref="roomTable" :data="roomList" v-loading="roomLoading" size="small" row-key="roomId" highlight-current-row :row-class-name="roomRowClassName" @row-click="handleRoomRowClick">
               <el-table-column label="会议室编号" prop="roomId" width="140" align="center" />
               <el-table-column label="容量" prop="capacity" width="90" align="center" />
-              <el-table-column label="位置" prop="location" align="center" />
               <el-table-column label="操作" width="120" align="center">
                 <template slot-scope="scope">
                   <el-button size="mini" type="text" icon="el-icon-s-promotion" @click="quickApply(scope.row)">申请</el-button>
@@ -97,10 +99,13 @@
               </el-table-column>
             </el-table>
           </el-col>
-          <el-col :span="10" class="room-info-right">
+          <el-col :span="16" class="room-info-right">
             <el-card shadow="never" class="schedule-card">
               <div slot="header" class="schedule-header">
-                <span>未来三日会议室日程</span>
+                <div class="schedule-header-left">
+                  <span>未来会议室占用情况</span>
+                  <span v-if="canSeeOccupy" class="schedule-context">{{ roomScheduleContextLabel }}</span>
+                </div>
                 <el-button v-if="canSeeOccupy" type="text" icon="el-icon-refresh" @click="refreshRoomSchedule" :loading="roomScheduleLoading">刷新</el-button>
               </div>
               <template v-if="!canSeeOccupy">
@@ -108,21 +113,21 @@
               </template>
               <template v-else>
                 <el-skeleton v-if="roomScheduleLoading && !roomHasScheduleContent" rows="6" animated />
-                <div v-else class="schedule-body">
-                  <div v-for="day in roomScheduleDays" :key="day.date" class="schedule-day">
-                    <div class="schedule-day-title">{{ day.label }}</div>
-                    <template v-if="day.records.length">
-                      <el-timeline>
-                        <el-timeline-item v-for="(item, idx) in day.records" :key="idx" :timestamp="item.timeRange" placement="top">
-                          <div class="schedule-item">
-                            <div class="schedule-item-room">{{ item.roomId }}</div>
-                            <div v-if="item.remark" class="schedule-item-remark">{{ item.remark }}</div>
-                          </div>
-                        </el-timeline-item>
-                      </el-timeline>
-                    </template>
-                    <el-empty v-else class="schedule-empty" description="暂无安排" />
+                <div v-else class="schedule-body room-schedule-body">
+                  <div v-if="roomScheduleDays.length" class="room-schedule-days">
+                    <div v-for="day in roomScheduleDays" :key="day.date" class="room-schedule-day">
+                      <div class="schedule-day-title">{{ day.label }}</div>
+                      <div v-if="day.records.length" class="room-schedule-day-content">
+                        <div v-for="(item, idx) in day.records" :key="idx" class="room-schedule-item">
+                          <div class="room-schedule-item-time">{{ item.timeRange }}</div>
+                          <div class="room-schedule-item-room">会议室：{{ item.roomId }}</div>
+                          
+                        </div>
+                      </div>
+                      <el-empty v-else class="schedule-empty" description="暂无安排" />
+                    </div>
                   </div>
+                  <el-empty v-else class="schedule-empty" description="近三日暂无占用安排" />
                 </div>
               </template>
             </el-card>
@@ -135,89 +140,99 @@
     </el-dialog>
 
     <!-- 申请弹窗（作为唯一的申请入口） -->
-    <el-dialog title="会议室申请" :visible.sync="applyOpen" width="620px" append-to-body>
-      <el-form ref="applyFormRef" :model="applyForm" :rules="applyRules" label-width="90px">
-        <el-form-item label="会议室" prop="roomIds">
-          <el-select v-model="applyForm.roomIds" multiple filterable placeholder="请选择会议室" style="width:100%">
-            <el-option v-for="r in roomList" :key="r.roomId" :label="r.roomId" :value="r.roomId" />
-          </el-select>
-        </el-form-item>
-        <!-- 开始时间：禁用过去的小时/分钟 -->
-        <el-form-item label="开始时间" prop="range">
-          <div class="apply-range-line">
-            <el-date-picker v-model="applyForm.startDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="开始日期" style="width: 140px" />
-            <el-select v-model="applyForm.startHour" placeholder="小时" style="width:88px; margin-left:8px">
-              <el-option v-for="h in hoursOptions" :key="'sh-'+h" :label="h" :value="h" :disabled="isStartHourDisabled(h)" />
-            </el-select>
-            <el-select v-model="applyForm.startMinute" placeholder="分钟" style="width:88px; margin-left:8px">
-              <el-option v-for="m in minutes5Options" :key="'sm-'+m" :label="m" :value="m" :disabled="isStartMinuteDisabled(m)" />
-            </el-select>
-          </div>
-        </el-form-item>
-        <!-- 结束时间：禁用过去的小时/分钟（以及早于开始时的组合会被逻辑自动纠正） -->
-        <el-form-item label="结束时间" prop="range">
-          <div class="apply-range-line">
-            <el-date-picker v-model="applyForm.endDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="结束日期" style="width: 140px" />
-            <el-select v-model="applyForm.endHour" placeholder="小时" style="width:88px; margin-left:8px">
-              <el-option v-for="h in hoursOptions" :key="'eh-'+h" :label="h" :value="h" :disabled="isEndHourDisabled(h)" />
-            </el-select>
-            <el-select v-model="applyForm.endMinute" placeholder="分钟" style="width:88px; margin-left:8px">
-              <el-option v-for="m in minutes5Options" :key="'em-'+m" :label="m" :value="m" :disabled="isEndMinuteDisabled(m)" />
-            </el-select>
-          </div>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input type="textarea" v-model="applyForm.remark" :rows="3" placeholder="用途/备注" />
-        </el-form-item>
-        <!-- 占用时段展示（修复未显示问题） -->
-        <el-form-item label="占用日程">
-          <div class="schedule-wrapper">
-            <el-empty v-if="!canSeeOccupy" description="暂无权限查看占用信息" />
-            <el-empty v-else-if="!applyForm.roomIds || !applyForm.roomIds.length" description="请选择会议室" />
-            <el-card v-else shadow="never" class="schedule-card apply-schedule-card">
-              <div slot="header" class="schedule-header">
-                <span>选定会议室未来占用日程</span>
-                <el-button type="text" icon="el-icon-refresh" @click="refreshApplySchedule" :loading="applyScheduleLoading">刷新</el-button>
+    <el-dialog title="会议室预约" :visible.sync="applyOpen" width="980px" append-to-body>
+      <div class="apply-dialog-layout">
+        <div class="apply-dialog-left">
+          <el-form ref="applyFormRef" :model="applyForm" :rules="applyRules" label-width="90px">
+            <el-form-item label="会议室" prop="roomIds">
+              <el-select v-model="applyForm.roomIds" multiple disabled filterable collapse-tags style="width:100%">
+                <el-option v-for="r in roomList" :key="r.roomId" :label="r.roomId" :value="r.roomId" />
+              </el-select>
+            </el-form-item>
+            <!-- 开始时间：禁用过去的小时/分钟 -->
+            <el-form-item label="开始时间" prop="range">
+              <div class="apply-range-line">
+                <el-date-picker v-model="applyForm.startDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="开始日期" style="width: 140px" />
+                <el-select v-model="applyForm.startHour" placeholder="小时" style="width:75px; margin-left:6px">
+                  <el-option v-for="h in hoursOptions" :key="'sh-'+h" :label="h" :value="h" :disabled="isStartHourDisabled(h)" />
+                </el-select>
+                <el-select v-model="applyForm.startMinute" placeholder="分钟" style="width:75px; margin-left:6px">
+                  <el-option v-for="m in minutes10Options" :key="'sm-'+m" :label="m" :value="m" :disabled="isStartMinuteDisabled(m)" />
+                </el-select>
               </div>
-              <el-skeleton v-if="applyScheduleLoading && !applyHasScheduleContent" rows="4" animated />
-              <div v-else class="schedule-body">
-                <div v-for="day in applyScheduleDays" :key="day.date" class="schedule-day">
-                  <div class="schedule-day-title">{{ day.label }}</div>
-                  <template v-if="day.records.length">
-                    <el-timeline>
-                      <el-timeline-item v-for="(item, idx) in day.records" :key="idx" :timestamp="item.timeRange" placement="top">
-                        <div class="schedule-item">
-                          <div class="schedule-item-room">{{ item.roomId }}</div>
-                          <div v-if="item.remark" class="schedule-item-remark">{{ item.remark }}</div>
+            </el-form-item>
+            <!-- 结束时间：禁用过去的小时/分钟（以及早于开始时的组合会被逻辑自动纠正） -->
+            <el-form-item label="结束时间" prop="range">
+              <div class="apply-range-line">
+                <el-date-picker v-model="applyForm.endDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="结束日期" style="width: 140px" />
+                <el-select v-model="applyForm.endHour" placeholder="小时" style="width:75px; margin-left:6px">
+                  <el-option v-for="h in hoursOptions" :key="'eh-'+h" :label="h" :value="h" :disabled="isEndHourDisabled(h)" />
+                </el-select>
+                <el-select v-model="applyForm.endMinute" placeholder="分钟" style="width:75px; margin-left:6px">
+                  <el-option v-for="m in minutes10Options" :key="'em-'+m" :label="m" :value="m" :disabled="isEndMinuteDisabled(m)" />
+                </el-select>
+              </div>
+            </el-form-item>
+            <el-form-item label="用途">
+              <el-input type="textarea" v-model="applyForm.remark" :rows="3" placeholder="请输入用途" />
+            </el-form-item>
+            <!-- 自动检测冲突：仅在存在冲突时显示结果表 -->
+            <el-form-item v-if="applyConflicts.length" label="冲突结果">
+              <el-table :data="applyConflicts" size="mini" border max-height="200">
+                <el-table-column prop="roomId" label="房间" width="120" />
+                <el-table-column prop="startTime" label="开始" width="160" />
+                <el-table-column prop="endTime" label="结束" width="160" />
+              </el-table>
+            </el-form-item>
+          </el-form>
+          <div class="apply-dialog-actions">
+            <el-button type="primary" @click="submitApply" :loading="applySubmitting" :disabled="applySubmitting">提 交</el-button>
+            <el-button @click="applyOpen=false" :disabled="applySubmitting">关 闭</el-button>
+          </div>
+        </div>
+        <div class="apply-dialog-right">
+          <el-card shadow="never" class="schedule-card apply-side-schedule-card">
+            <div slot="header" class="schedule-header">
+              <div class="schedule-header-left">
+                <span>未来会议室占用情况</span>
+                <span v-if="applyScheduleContextLabel" class="schedule-context">{{ applyScheduleContextLabel }}</span>
+              </div>
+              <el-button v-if="canSeeOccupy" type="text" icon="el-icon-refresh" @click="refreshApplySchedule" :loading="applyScheduleLoading">刷新</el-button>
+            </div>
+            <template v-if="!canSeeOccupy">
+              <el-empty description="暂无权限查看占用信息" />
+            </template>
+            <template v-else>
+              <el-empty v-if="!applyForm.roomIds || !applyForm.roomIds.length" description="请选择会议室" />
+              <template v-else>
+                <el-skeleton v-if="applyScheduleLoading && !applyHasScheduleContent" rows="6" animated />
+                <div v-else class="schedule-body room-schedule-body">
+                  <div v-if="applyScheduleDays.length" class="room-schedule-days">
+                    <div v-for="day in applyScheduleDays" :key="day.date" class="room-schedule-day">
+                      <div class="schedule-day-title">{{ day.label }}</div>
+                      <div v-if="day.records.length" class="room-schedule-day-content">
+                        <div v-for="(item, idx) in day.records" :key="idx" class="room-schedule-item">
+                          <div class="room-schedule-item-time">{{ item.timeRange }}</div>
+                          <div class="room-schedule-item-room">会议室：{{ item.roomId }}</div>
+                          <div v-if="item.remark" class="room-schedule-item-remark">{{ item.remark }}</div>
                         </div>
-                      </el-timeline-item>
-                    </el-timeline>
-                  </template>
-                  <el-empty v-else class="schedule-empty" description="暂无安排" />
+                      </div>
+                      <el-empty v-else class="schedule-empty" description="暂无安排" />
+                    </div>
+                  </div>
+                  <el-empty v-else class="schedule-empty" description="暂无占用安排" />
                 </div>
-              </div>
-            </el-card>
-          </div>
-        </el-form-item>
-        <!-- 自动检测冲突：仅在存在冲突时显示结果表 -->
-        <el-form-item v-if="applyConflicts.length" label="冲突结果">
-          <el-table :data="applyConflicts" size="mini" border max-height="200">
-            <el-table-column prop="roomId" label="房间" width="120" />
-            <el-table-column prop="startTime" label="开始" width="160" />
-            <el-table-column prop="endTime" label="结束" width="160" />
-          </el-table>
-        </el-form-item>
-      </el-form>
-      <div slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="submitApply" :loading="applySubmitting" :disabled="applySubmitting">提 交</el-button>
-        <el-button @click="applyOpen=false" :disabled="applySubmitting">关 闭</el-button>
+              </template>
+            </template>
+          </el-card>
+        </div>
       </div>
     </el-dialog>
   </div>
 </template>
 
 <script>
-import { listDetail, getDetail, addDetail, updateDetail, delDetail } from '@/api/meeting/detail'
+import { listMyDetail, getDetail, addDetail, updateDetail, delDetail } from '@/api/meeting/detail'
 import { listRoom } from '@/api/meeting/room'
 import { submitRequest, conflictCheck, listRequestDetail, listRequest } from '@/api/meeting/request'
 import { listReservation } from '@/api/meeting/reservation'
@@ -230,8 +245,8 @@ export default {
   data(){
     return {
       loading:false,
-      detailList:[], total:0,
-      queryParams:{ pageNum:1, pageSize:10, applicantName:null, roomId:null, startTime:null, endTime:null },
+  detailList:[], total:0,
+  queryParams:{ pageNum:1, pageSize:10, roomId:null, startTime:null, endTime:null },
       ids:[], single:true, multiple:true,
       form:{ detailId:null, requestId:null, roomId:null, startTime:null, endTime:null },
       open:false, title:'',
@@ -259,7 +274,7 @@ export default {
       updatingEndSilently:false,
       // 供时间选择的选项
       hoursOptions: Array.from({length:24}, (_,i)=> (i<10? '0'+i : ''+i)),
-      minutes5Options: Array.from({length:12}, (_,i)=> { const v=i*5; return v<10? '0'+v: ''+v }),
+      minutes10Options: Array.from({ length:6 }, (_, i)=> { const v = i * 10; return v<10 ? '0'+v : ''+v }),
       recentMonthOptions:{
         disabledDate:(time)=>{
           const now = new Date();
@@ -272,12 +287,13 @@ export default {
       },
       roomOptions:[],
       // 冲突结果
-      applyConflicts:[],
+  applyConflicts:[],
       // 会议室信息弹窗
       roomInfoOpen:false,
       roomLoading:false,
       roomList:[],
       occupyMap:{},
+  selectedRoomId:null,
       // 申请占用数据
       applyOccupy:[],
       applyOccupyLoading:false,
@@ -288,6 +304,19 @@ export default {
     hasResvListPerm(){ return checkPermi(['meeting:reservation:list']) },
     hasDetailListPerm(){ return checkPermi(['meeting:detail:list']) },
     canSeeOccupy(){ return this.hasResvListPerm || this.hasDetailListPerm },
+    roomScheduleContextLabel(){
+      if(!this.canSeeOccupy) return ''
+      return this.selectedRoomId ? `当前查看：会议室 ${this.selectedRoomId}` : '当前查看：全部会议室'
+    },
+    applyScheduleContextLabel(){
+      if(!this.canSeeOccupy) return ''
+      const ids = Array.isArray(this.applyForm.roomIds) ? this.applyForm.roomIds.filter(id=> id != null && id !== '') : []
+      if(!ids.length) return ''
+      const unique = Array.from(new Set(ids.map(id=> String(id))))
+      if(unique.length === 1) return `当前查看：会议室 ${unique[0]}`
+      if(unique.length <= 3) return `当前查看：会议室 ${unique.join('、')}`
+      return `当前查看：${unique.length} 个会议室`
+    },
     // 申请弹窗：仅展示“已通过且当前/未来”的时段
     applyFutureOccupy(){
       const now = Date.now()
@@ -298,38 +327,62 @@ export default {
         .sort((a,b)=> this.parseTs(a.startTime) - this.parseTs(b.startTime))
     },
     roomScheduleDays(){
-      if(!this.canSeeOccupy) return this.buildEmptySchedule()
+      if(!this.canSeeOccupy) return []
+      const rooms = Array.isArray(this.roomList) ? this.roomList : []
+      const orderedRooms = rooms.map(room=> room && room.roomId).filter(id=> id)
+      const candidateRooms = this.selectedRoomId ? [this.selectedRoomId] : orderedRooms
+      const fallbackRooms = Object.keys(this.occupyMap || {})
+      const resolvedRooms = (candidateRooms.length ? candidateRooms : fallbackRooms).filter(Boolean)
+      if(!resolvedRooms.length) return []
       const records = []
-      const map = this.occupyMap || {}
-      Object.keys(map).forEach(roomId=>{
-        const entry = map[roomId]
+      resolvedRooms.forEach(roomId=>{
+        const entry = this.occupyMap && this.occupyMap[roomId]
         const list = entry && Array.isArray(entry.list) ? entry.list : []
         list.forEach(item=>{
+          if(!item) return
+          if(!this.isApprovedRow(item)) return
+          if(item.roomId == null && item.room_id != null) item.roomId = item.room_id
+          if(item.startTime == null && item.start_time != null) item.startTime = item.start_time
+          if(item.endTime == null && item.end_time != null) item.endTime = item.end_time
+          if(!this.isFutureOrOngoing(item)) return
+          const roomKey = item.roomId != null ? item.roomId : roomId
           records.push({
-            roomId,
-            startTime: item && (item.startTime || item.start_time),
-            endTime: item && (item.endTime || item.end_time),
+            roomId: roomKey,
+            startTime: item.startTime,
+            endTime: item.endTime,
             remark: this.resolveRemark(item)
           })
         })
       })
-      const order = (Array.isArray(this.roomList) ? this.roomList : []).map(r=> r && r.roomId).filter(v=> v != null)
-      return this.buildScheduleDays(records, order)
+      const roomOrder = Array.from(new Set([...orderedRooms, ...resolvedRooms])).filter(Boolean)
+      const days = this.buildScheduleDays(records, roomOrder, {
+        includeUntilLast: true,
+        includeTodayAlways: true,
+        minDays: 3,
+        trimEmptyFuture: true
+      })
+      return days.filter(day=> Array.isArray(day.records) && day.records.length)
     },
     roomScheduleLoading(){
       if(!this.canSeeOccupy) return false
-      const map = this.occupyMap || {}
-      const keys = Object.keys(map)
-      if(!keys.length) return this.roomLoading
-      return keys.some(key=> map[key] && map[key].loading)
+      const rooms = Array.isArray(this.roomList) ? this.roomList : []
+  const initialRooms = rooms.map(room=> room && room.roomId).filter(id=> id)
+  const candidateRooms = this.selectedRoomId ? [this.selectedRoomId] : initialRooms
+  const fallbackRooms = Object.keys(this.occupyMap || {})
+  const targetRooms = candidateRooms.length ? candidateRooms : fallbackRooms
+      if(!targetRooms.length) return this.roomLoading
+      return targetRooms.some(roomId=>{
+        const entry = this.occupyMap && this.occupyMap[roomId]
+        return !entry || !!entry.loading
+      })
     },
     roomHasScheduleContent(){
-      return this.roomScheduleDays.some(day=> Array.isArray(day.records) && day.records.length)
+      return this.canSeeOccupy && this.roomScheduleDays.length > 0
     },
     applyScheduleDays(){
-      if(!this.canSeeOccupy) return this.buildEmptySchedule()
+      if(!this.canSeeOccupy) return []
       const ids = Array.isArray(this.applyForm.roomIds) ? this.applyForm.roomIds : []
-      if(!ids.length) return this.buildEmptySchedule()
+      if(!ids.length) return []
       const idSet = new Set(ids.map(id=> String(id)))
       const records = (this.applyFutureOccupy || []).filter(item=>{
         const roomId = item && (item.roomId != null ? item.roomId : item.room_id)
@@ -340,7 +393,8 @@ export default {
         endTime: item && (item.endTime || item.end_time),
         remark: this.resolveRemark(item)
       }))
-  return this.buildScheduleDays(records, ids, { includeUntilLast: true, minDays: 1, includeTodayAlways: true, trimEmptyFuture: true })
+      const days = this.buildScheduleDays(records, ids, { includeUntilLast: true, minDays: 1, includeTodayAlways: true, trimEmptyFuture: true })
+      return days.filter(day=> Array.isArray(day.records) && day.records.length)
     },
     applyScheduleLoading(){
       return this.applyOccupyLoading
@@ -360,6 +414,23 @@ export default {
     'applyForm.endDate': function(){ if(!this.updatingEndSilently) this.endTouched=true; this.composeApplyRange() },
     'applyForm.endHour': function(){ if(!this.updatingEndSilently) this.endTouched=true; this.composeApplyRange() },
     'applyForm.endMinute': function(){ if(!this.updatingEndSilently) this.endTouched=true; this.composeApplyRange() },
+    selectedRoomId(val){
+      if(val && this.canSeeOccupy){
+        const entry = this.occupyMap && this.occupyMap[val]
+        const shouldFetch = !entry || ((!entry.list || !entry.list.length) && !entry.loading)
+        if(shouldFetch) this.fetchRoomOccupy(val)
+      }
+      this.$nextTick(()=> this.syncRoomSelection())
+    },
+    canSeeOccupy(val){ if(!val) this.selectedRoomId = null },
+    roomList(list){
+      const exists = Array.isArray(list) && list.some(item=> item && item.roomId === this.selectedRoomId)
+      if(!exists && this.selectedRoomId != null){
+        this.selectedRoomId = null
+      } else {
+        this.$nextTick(()=> this.syncRoomSelection())
+      }
+    },
   },
   methods:{
     // 统一解析时间字符串为时间戳
@@ -385,13 +456,22 @@ export default {
       return null
     },
     // 打开房间信息对话框
-    openRoomInfo(){ this.roomInfoOpen=true; this.getRoomList() },
+    openRoomInfo(){ this.roomInfoOpen=true; this.selectedRoomId=null; this.getRoomList() },
     getRoomList(){
       this.roomLoading=true
       listRoom({ pageNum:1, pageSize:20 }).then(r=>{
         this.roomList = (r && r.rows) ? r.rows : []
         this.prefetchOccupy()
+        this.syncRoomSelection()
       }).finally(()=>{ this.roomLoading=false })
+    },
+    handleRoomRowClick(row){ if(!row || !row.roomId) return; this.selectedRoomId = this.selectedRoomId === row.roomId ? null : row.roomId },
+    roomRowClassName({ row }){ return row && row.roomId === this.selectedRoomId ? 'is-selected-room' : '' },
+    syncRoomSelection(){
+      if(!this.$refs.roomTable) return
+      const rows = Array.isArray(this.roomList) ? this.roomList : []
+      const current = rows.find(item=> item && item.roomId === this.selectedRoomId) || null
+      this.$refs.roomTable.setCurrentRow(current || null)
     },
     prefetchOccupy(){ if(!this.canSeeOccupy) return; (this.roomList||[]).map(r=>r.roomId).filter(Boolean).forEach(id=> this.fetchRoomOccupy(id)) },
     fetchRoomOccupy(roomId){
@@ -448,13 +528,8 @@ export default {
     async getList(){
       this.loading=true;
       try {
-        const res = await listDetail(this.queryParams);
-        let rows = res.rows||[];
-        // 前端兜底：按申请人模糊过滤（若后端未支持 applicantName 查询）
-        if(this.queryParams.applicantName){
-          const kw = String(this.queryParams.applicantName).trim();
-          if(kw){ rows = rows.filter(x=> String(x.applicantName||'').includes(kw)) }
-        }
+        const res = await listMyDetail(this.queryParams);
+        const rows = res.rows||[];
         this.detailList = rows;
         this.total = res.total || rows.length || 0;
         // 预取父申请信息（用于更新时间等显示）
@@ -465,7 +540,6 @@ export default {
       const ids = Array.from(new Set((rows||[]).map(r=> r && r.requestId != null ? String(r.requestId) : '').filter(Boolean)))
       if(!ids.length) return
       const params = { pageNum:1, pageSize:1000 }
-      if (this.queryParams && this.queryParams.applicantName) params.applicantName = this.queryParams.applicantName
       // 批量查询父申请列表（避免逐条 getRequest 导致 404）
       listRequest(params).then(res=>{
         const arr = (res && res.rows) ? res.rows : []
@@ -540,19 +614,80 @@ export default {
         .then(()=>{ this.$modal.msgSuccess('提交成功'); this.applyOpen=false; this.getList() })
         .finally(()=>{ this.applySubmitting=false })
     },
-    displayUpdate(row){
-      const req = row && row.requestId ? (this.requestInfoMap[row.requestId] || {}) : {}
-      const cand = this.pickValidTime(
-        row && row.updateTime, row && row.update_time, row && row.decisionTime, row && row.decision_time, row && row.modifyTime, row && row.modify_time, row && row.createTime, row && row.create_time, row && row.gmtModified, row && row.gmtCreate,
-        req.updateTime, req.update_time, req.decisionTime, req.decision_time, req.modifyTime, req.modify_time, req.createTime, req.create_time, req.gmtModified, req.gmtCreate
-      )
-      if(!cand) return '-'
-      const ts = this.parseTs(cand)
-      if(!isFinite(ts)) return String(cand)
+    formatDateTime(value){
+      if(value == null) return null
+      const s = String(value).trim()
+      if(!s) return null
+      const ts = this.parseTs(s)
+      if(!isFinite(ts)) return s
       const d=new Date(ts); const p=n=>(n<10?'0':'')+n
       return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
     },
-    roundUpTo5Min(ts){ const step=5*60*1000; return Math.ceil(ts/step)*step },
+    displayTimeRange(row){
+      const start = this.pickValidTime(row && row.startTime, row && row.start_time)
+      const end = this.pickValidTime(row && row.endTime, row && row.end_time)
+      if(!start && !end) return '-'
+      const startStr = start ? this.formatDateTime(start) : '-'
+      const endStr = end ? this.formatDateTime(end) : '-'
+      return `${startStr || '-'} ~ ${endStr || '-'}`
+    },
+    getRequestInfo(row){
+      if(!row || !row.requestId) return {}
+      return this.requestInfoMap[row.requestId] || {}
+    },
+    displayCreate(row){
+      const req = this.getRequestInfo(row)
+      const cand = this.pickValidTime(
+        row && row.createTime, row && row.create_time,
+        req.createTime, req.create_time,
+        row && row.gmtCreate, row && row.gmt_create,
+        req.gmtCreate, req.gmt_create
+      )
+      const formatted = cand ? this.formatDateTime(cand) : null
+      return formatted || '-'
+    },
+    displayUpdate(row){
+      const req = this.getRequestInfo(row)
+      const cand = this.pickValidTime(
+        row && row.updateTime, row && row.update_time,
+        row && row.decisionTime, row && row.decision_time,
+        row && row.modifyTime, row && row.modify_time,
+        row && row.createTime, row && row.create_time,
+        row && row.gmtModified, row && row.gmt_modified,
+        row && row.gmtCreate, row && row.gmt_create,
+        req.updateTime, req.update_time,
+        req.decisionTime, req.decision_time,
+        req.modifyTime, req.modify_time,
+        req.createTime, req.create_time,
+        req.gmtModified, req.gmt_modified,
+        req.gmtCreate, req.gmt_create
+      )
+      const formatted = cand ? this.formatDateTime(cand) : null
+      return formatted || '-'
+    },
+    displayDecisionRemark(row){
+      const req = this.getRequestInfo(row)
+      const remark = row && (row.decisionRemark || row.decision_remark)
+        || req.decisionRemark || req.decision_remark
+        || req.approvalRemark || req.approval_remark
+      const text = remark != null ? String(remark).trim() : ''
+      return text || '-'
+    },
+    displayPurpose(row){
+      const req = this.getRequestInfo(row)
+      const remark = row && (row.remark || row.reason || row.purpose || row.applyReason || row.apply_reason)
+      if(remark != null && String(remark).trim()){
+        return String(remark).trim()
+      }
+      const reqRemark = req && (req.remark || req.reason || req.purpose || req.applyReason || req.apply_reason)
+      const text = reqRemark != null ? String(reqRemark).trim() : ''
+      return text || '-'
+    },
+    roundUpToMinuteStep(ts, stepMinutes = 10){
+      const minutes = Math.max(1, Number(stepMinutes) || 10)
+      const step = minutes * 60 * 1000
+      return Math.ceil(ts / step) * step
+    },
     toParts(ts){ const d=new Date(ts); const p=n=> (n<10?'0':'')+n; return { d:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`, h:p(d.getHours()), m:p(d.getMinutes()) } },
     composeApplyRange(){
       const { startDate, startHour, startMinute, endDate, endHour, endMinute } = this.applyForm
@@ -563,8 +698,8 @@ export default {
         sTs = this.parseTs(sStr)
         const now = Date.now()
         if(isFinite(sTs) && sTs < now){
-          // 上调到最近5分钟
-          const adj = this.roundUpTo5Min(now)
+          // 上调到最近10分钟
+          const adj = this.roundUpToMinuteStep(now, 10)
           const parts = this.toParts(adj)
           this.applyForm.startDate = parts.d
           this.applyForm.startHour = parts.h
@@ -573,17 +708,23 @@ export default {
           sTs = adj
         }
       }
-      // 同步结束=开始：当结束未手动修改 或 结束<开始
+      // 同步结束时间：当结束未手动修改 或 结束<=开始，自动补齐为开始+1小时
       if(sStr){
         const hasEnd = !!(endDate && endHour && endMinute)
         let eTs = NaN
         if(hasEnd){ eTs = this.parseTs(`${endDate} ${endHour}:${endMinute}:00`) }
-        if(!this.endTouched || (isFinite(eTs) && isFinite(sTs) && eTs < sTs)){
-          this.updatingEndSilently=true
-          this.applyForm.endDate = this.applyForm.startDate
-          this.applyForm.endHour = this.applyForm.startHour
-          this.applyForm.endMinute = this.applyForm.startMinute
-          this.$nextTick(()=>{ this.updatingEndSilently=false })
+        const shouldAutoFill = !this.endTouched || !isFinite(eTs) || (isFinite(sTs) && eTs <= sTs)
+        if(shouldAutoFill && isFinite(sTs)){
+          const autoEndTs = sTs + 60 * 60 * 1000
+          const parts = this.toParts(autoEndTs)
+          const same = this.applyForm.endDate === parts.d && this.applyForm.endHour === parts.h && this.applyForm.endMinute === parts.m
+          if(!same){
+            this.updatingEndSilently=true
+            this.applyForm.endDate = parts.d
+            this.applyForm.endHour = parts.h
+            this.applyForm.endMinute = parts.m
+            this.$nextTick(()=>{ this.updatingEndSilently=false })
+          }
         }
       }
       // 设置 range
@@ -625,8 +766,8 @@ export default {
     isFutureOrOngoing(x){ const e=this.parseTs(x && (x.endTime||x.end_time)); return isFinite(e) ? e >= Date.now() : false },
     // 判断是否同一天
     isSameDay(d1,d2){ return !!d1 && !!d2 && String(d1)===String(d2) },
-    // 当前时间拆分（向上取整到5分钟）
-    nowParts(){ const adj=this.roundUpTo5Min(Date.now()); const d=new Date(adj); const p=n=> (n<10?'0':'')+n; return { d:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`, h:p(d.getHours()), m:p(d.getMinutes()) } },
+    // 当前时间拆分（向上取整到10分钟）
+    nowParts(){ const adj=this.roundUpToMinuteStep(Date.now(), 10); const d=new Date(adj); const p=n=> (n<10?'0':'')+n; return { d:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`, h:p(d.getHours()), m:p(d.getMinutes()) } },
     // 开始时间选项禁用
     isStartHourDisabled(h){
       if(!this.applyForm.startDate) return false;
@@ -831,17 +972,58 @@ export default {
 </script>
 
 <style scoped>
+.detail-table{ width:100%; }
+.detail-table ::v-deep .el-table__inner-wrapper{ width:100% !important; }
+.detail-table ::v-deep colgroup col:nth-child(5),
+.detail-table ::v-deep colgroup col:nth-child(6),
+.detail-table ::v-deep colgroup col:nth-child(7),
+.detail-table ::v-deep colgroup col:nth-child(8),
+.detail-table ::v-deep colgroup col:nth-child(9){ width:auto !important; }
+.detail-table ::v-deep th:nth-child(5),
+.detail-table ::v-deep th:nth-child(6),
+.detail-table ::v-deep th:nth-child(7),
+.detail-table ::v-deep th:nth-child(8),
+.detail-table ::v-deep th:nth-child(9),
+.detail-table ::v-deep td:nth-child(5),
+.detail-table ::v-deep td:nth-child(6),
+.detail-table ::v-deep td:nth-child(7),
+.detail-table ::v-deep td:nth-child(8),
+.detail-table ::v-deep td:nth-child(9){ width:auto !important; }
+.detail-table ::v-deep td:nth-child(5) .cell{ white-space:nowrap; line-height:1.4; }
+.detail-table ::v-deep td:nth-child(6) .cell,
+.detail-table ::v-deep td:nth-child(7) .cell,
+.detail-table ::v-deep td:nth-child(8) .cell,
+.detail-table ::v-deep td:nth-child(9) .cell{ white-space:nowrap; }
+.detail-table ::v-deep .reservation-time-col .cell{ white-space:nowrap; line-height:1.4;}
 .mb8{ margin-bottom:8px }
 .apply-range-line{ display:flex; align-items:center; flex-wrap:wrap }
+.apply-dialog-layout{ display:flex; gap:20px; align-items:stretch }
+.apply-dialog-left{ flex:0 0 400px; min-width:280px; max-width:400px; display:flex; flex-direction:column }
+.apply-dialog-right{ flex:1 1 auto; min-width:0; display:flex }
+.apply-side-schedule-card{ width:100% }
+.apply-side-schedule-card .room-schedule-days{ grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)) }
+.apply-dialog-actions{ margin-top:16px; display:flex; gap:12px; justify-content:flex-end }
 
-.room-info-content{ display:flex; flex-direction:column }
+.room-info-content{ display:flex; flex-direction:column; padding:0 6px }
 .room-info-left,
 .room-info-right{ display:flex; flex-direction:column }
+.room-info-left{ min-width:0 }
+.room-info-right{ min-width:0 }
 
 .schedule-wrapper{ width:100% }
 .schedule-card{ display:flex; flex-direction:column; height:100% }
 .schedule-header{ display:flex; align-items:center; justify-content:space-between; font-weight:600 }
+.schedule-header-left{ display:flex; align-items:center; gap:8px }
+.schedule-context{ font-size:12px; color:#909399; font-weight:400 }
 .schedule-body{ flex:1; overflow-y:auto; max-height:360px; padding-right:4px }
+.room-schedule-body{ display:flex; flex-direction:column; gap:12px; overflow:visible; max-height:none; padding-right:0 }
+.room-schedule-days{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; width:100%; align-items:stretch }
+.room-schedule-day{ background:#f9fafc; border:1px solid #ebeef5; border-radius:8px; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; gap:12px; min-width:0 }
+.room-schedule-day-content{ display:flex; flex-direction:column; gap:8px }
+.room-schedule-item{ background:#fff; border:1px solid #ebeef5; border-radius:6px; padding:8px 10px; box-shadow:0 1px 2px rgba(31,35,41,0.04) }
+.room-schedule-item-time{ font-weight:600; color:#303133 }
+.room-schedule-item-room{ color:#606266; font-size:12px; margin-top:4px }
+.room-schedule-item-remark{ color:#909399; font-size:12px; margin-top:4px }
 .schedule-day + .schedule-day{ margin-top:16px }
 .schedule-day-title{ font-size:14px; font-weight:600; margin-bottom:8px; color:#303133 }
 .schedule-item-room{ font-weight:600; margin-bottom:4px }
@@ -851,9 +1033,26 @@ export default {
 .schedule-empty ::v-deep .el-empty__image{ width:90px }
 .schedule-empty ::v-deep .el-empty__description{ font-size:12px; margin-top:4px }
 .apply-schedule-card{ margin-top:0 }
+.room-info-left ::v-deep .is-selected-room > td{ background-color:#f5f7fa !important }
+.room-info-left ::v-deep .el-table__row{ cursor:pointer }
 
 @media (max-width: 1200px){
   .schedule-body{ max-height:none }
   .room-info-right{ margin-top:16px }
+}
+
+@media (max-width: 1100px){
+  .room-schedule-days{ grid-template-columns:repeat(2, minmax(0, 1fr)) }
+}
+
+@media (max-width: 780px){
+  .room-schedule-days{ grid-template-columns:repeat(1, minmax(0, 1fr)) }
+}
+
+@media (max-width: 992px){
+  .apply-dialog-layout{ flex-direction:column }
+  .apply-dialog-left{ flex:1 1 auto; min-width:0; max-width:none; width:100% }
+  .apply-dialog-right{ width:100%; min-width:0 }
+  .apply-dialog-actions{ justify-content:flex-start }
 }
 </style>

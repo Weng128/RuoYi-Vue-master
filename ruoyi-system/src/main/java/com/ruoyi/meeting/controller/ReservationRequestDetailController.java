@@ -47,6 +47,24 @@ public class ReservationRequestDetailController extends BaseController
     }
 
     /**
+     * 查询当前用户的申请明细列表
+     */
+    @PreAuthorize("@ss.hasPermi('meeting:detail:list')")
+    @GetMapping("/mine")
+    public TableDataInfo listMine(ReservationRequestDetail reservationRequestDetail)
+    {
+        Long userId = getUserId();
+        if (userId == null)
+        {
+            return getDataTable(java.util.Collections.emptyList());
+        }
+        reservationRequestDetail.setApplicantId(userId);
+        startPage();
+        List<ReservationRequestDetail> list = reservationRequestDetailService.selectReservationRequestDetailList(reservationRequestDetail);
+        return getDataTable(list);
+    }
+
+    /**
      * 导出申请明细列表
      */
     @PreAuthorize("@ss.hasPermi('meeting:detail:export')")

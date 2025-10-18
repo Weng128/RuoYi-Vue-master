@@ -33,6 +33,8 @@ public class ReservationRequestDetail extends BaseEntity
     /** 审批状态（来自 reservation_request.status） */
     @Excel(name = "审批状态")
     private String status;
+    /** 申请人ID */
+    private Long applicantId;
     /** 申请人姓名 */
     @Excel(name = "申请人")
     private String applicantName;
@@ -106,6 +108,14 @@ public class ReservationRequestDetail extends BaseEntity
         this.applicantName = applicantName;
     }
 
+    public Long getApplicantId() {
+        return applicantId;
+    }
+
+    public void setApplicantId(Long applicantId) {
+        this.applicantId = applicantId;
+    }
+
     public String getAdminName() {
         return adminName;
     }
@@ -123,6 +133,7 @@ public class ReservationRequestDetail extends BaseEntity
             .append("startTime", getStartTime())
             .append("endTime", getEndTime())
             .append("status", getStatus())
+            .append("applicantId", getApplicantId())
             .append("applicantName", getApplicantName())
             .append("adminName", getAdminName())
             .toString();

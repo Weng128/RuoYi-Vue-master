@@ -8,6 +8,7 @@
         <result property="startTime" column="start_time" />
         <result property="endTime" column="end_time" />
         <!-- 新增映射字段 -->
+    <result property="applicantId" column="applicant_id" />
         <result property="status" column="status" />
         <result property="applicantName" column="applicant_name" />
         <result property="adminName" column="admin_name" />
@@ -20,8 +21,9 @@
     </select>
 
     <select id="selectReservationRequestDetailList" resultMap="ReservationRequestDetailResult">
-        select d.detail_id, d.request_id, d.room_id, d.start_time, d.end_time,
-               r.status,
+     select d.detail_id, d.request_id, d.room_id, d.start_time, d.end_time,
+         r.status,
+         r.applicant_id,
                ua.nick_name as applicant_name,
                ub.nick_name as admin_name
           from reservation_request_detail d
@@ -31,6 +33,7 @@
         <where>
             <if test="requestId != null"> and d.request_id=#{requestId}</if>
             <if test="roomId != null and roomId != ''"> and d.room_id=#{roomId}</if>
+            <if test="applicantId != null"> and r.applicant_id = #{applicantId}</if>
         </where>
         order by d.detail_id desc
     </select>

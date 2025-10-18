@@ -9,6 +9,15 @@ export function listDetail(query) {
   })
 }
 
+// 查询当前用户的会议室申请明细列表
+export function listMyDetail(query) {
+  return request({
+    url: '/meeting/detail/mine',
+    method: 'get',
+    params: query
+  })
+}
+
 // 查询会议室申请明细详情
 export function getDetail(detailId) {
   return request({
