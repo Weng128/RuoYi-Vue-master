@@ -57,6 +57,26 @@ public class ReservationRequestServiceImpl implements IReservationRequestService
     @Override
     public int updateReservationRequest(ReservationRequest reservationRequest)
     {
+        if (reservationRequest == null || reservationRequest.getRequestId() == null)
+        {
+            throw new ServiceException("申请ID不能为空");
+        }
+        ReservationRequest origin = reservationRequestMapper.selectReservationRequestByRequestId(reservationRequest.getRequestId());
+        if (origin == null)
+        {
+            throw new ServiceException("申请不存在");
+        }
+        if (reservationRequest.getStatus() != null)
+        {
+            if (ReservationRequest.STATUS_PENDING.equals(reservationRequest.getStatus()))
+            {
+                if (ReservationRequest.STATUS_PENDING.equals(origin.getStatus()))
+                {
+                    throw new ServiceException("当前申请已处于待审批状态");
+                }
+                return reservationRequestMapper.resetApprovalState(reservationRequest.getRequestId(), reservationRequest.getStatus(), reservationRequest.getRemark());
+            }
+        }
         return reservationRequestMapper.updateReservationRequest(reservationRequest);
     }
 

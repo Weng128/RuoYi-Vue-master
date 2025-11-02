@@ -34,6 +34,8 @@
             <if test="requestId != null"> and d.request_id=#{requestId}</if>
             <if test="roomId != null and roomId != ''"> and d.room_id=#{roomId}</if>
             <if test="applicantId != null"> and r.applicant_id = #{applicantId}</if>
+            <if test="params.beginCreateTime != null and params.beginCreateTime != ''"> and r.create_time &gt;= #{params.beginCreateTime}</if>
+            <if test="params.endCreateTime != null and params.endCreateTime != ''"> and r.create_time &lt;= #{params.endCreateTime}</if>
         </where>
         order by d.detail_id desc
     </select>

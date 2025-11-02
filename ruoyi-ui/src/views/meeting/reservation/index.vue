@@ -9,8 +9,7 @@
         <el-input v-model="queryParams.adminId" placeholder="管理员ID" clearable @keyup.enter.native="handleQuery" />
       </el-form-item>
       <el-form-item label="起止时间">
-        <!-- 统一为秒级格式 -->
-        <el-date-picker v-model="rangePicker" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="yyyy-MM-dd HH:mm:ss" align="right" />
+        <el-date-picker v-model="rangePicker" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="yyyy-MM-dd HH:mm" align="right" />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
@@ -35,8 +34,12 @@
       <el-table-column type="selection" width="55" align="center" />
       <el-table-column label="ID" prop="reserveId" align="center" width="90" />
       <el-table-column label="房间" prop="roomId" align="center" />
-      <el-table-column label="开始时间" prop="startTime" align="center" width="160" />
-      <el-table-column label="结束时间" prop="endTime" align="center" width="160" />
+      <el-table-column label="开始时间" align="center" width="160">
+        <template slot-scope="scope">{{ formatDisplayTime(scope.row.startTime || scope.row.start_time) }}</template>
+      </el-table-column>
+      <el-table-column label="结束时间" align="center" width="160">
+        <template slot-scope="scope">{{ formatDisplayTime(scope.row.endTime || scope.row.end_time) }}</template>
+      </el-table-column>
       <el-table-column label="管理员" align="center" width="120">
         <template slot-scope="scope">{{ displayUserName(scope.row.adminId) }}</template>
       </el-table-column>
@@ -58,16 +61,19 @@
           </el-select>
         </el-form-item>
         <el-form-item label="时间范围" required>
-          <!-- 统一为秒级格式 -->
-          <el-date-picker v-model="form.range" type="datetimerange" value-format="yyyy-MM-dd HH:mm:ss" start-placeholder="开始" end-placeholder="结束" style="width:100%" />
+          <el-date-picker v-model="form.range" type="datetimerange" value-format="yyyy-MM-dd HH:mm" start-placeholder="开始" end-placeholder="结束" style="width:100%" />
         </el-form-item>
         <!-- 冲突结果展示 -->
         <el-form-item v-if="reserveConflicts.length" label="冲突结果">
           <el-alert :title="'发现 '+reserveConflicts.length+' 条冲突'" type="error" :closable="false" />
           <el-table :data="reserveConflicts" size="mini" border style="margin-top:6px" max-height="220">
             <el-table-column prop="roomId" label="房间" width="120" />
-            <el-table-column prop="startTime" label="开始" width="160" />
-            <el-table-column prop="endTime" label="结束" width="160" />
+            <el-table-column label="开始" width="160">
+              <template slot-scope="scope">{{ formatDisplayTime(scope.row.startTime || scope.row.start_time) }}</template>
+            </el-table-column>
+            <el-table-column label="结束" width="160">
+              <template slot-scope="scope">{{ formatDisplayTime(scope.row.endTime || scope.row.end_time) }}</template>
+            </el-table-column>
             <el-table-column prop="sourceType" label="来源" width="100" />
           </el-table>
         </el-form-item>
@@ -160,6 +166,19 @@ export default {
       const qp = { ...this.queryParams }
       if(this.rangePicker && this.rangePicker.length===2){ qp.startTime = this.rangePicker[0]; qp.endTime = this.rangePicker[1]; }
       this.download('meeting/reservation/export', qp, `reservation_${Date.now()}.xlsx`)
+    },
+    formatDisplayTime(value){
+      if(value == null) return '-'
+      const s = String(value).trim()
+      if(!s) return '-'
+      const tryIso = Date.parse(s.replace(' ', 'T'))
+      const ts = !isNaN(tryIso) ? tryIso : Date.parse(s.replace(/-/g,'/'))
+      if(!isNaN(ts)){
+        const d = new Date(ts)
+        const pad = (n)=> (n<10? '0' : '') + n
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+      }
+      return s
     }
   }
 }

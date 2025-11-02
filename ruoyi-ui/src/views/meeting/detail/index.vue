@@ -5,11 +5,18 @@
       <el-form-item label="会议室" prop="roomId">
         <el-input v-model="queryParams.roomId" placeholder="请输入会议室编号" clearable @keyup.enter.native="handleQuery" />
       </el-form-item>
-      <el-form-item label="开始时间" prop="startTime">
-        <el-date-picker v-model="queryParams.startTime" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" placeholder="请选择开始时间" clearable />
-      </el-form-item>
-      <el-form-item label="结束时间" prop="endTime">
-        <el-date-picker v-model="queryParams.endTime" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" placeholder="请选择结束时间" clearable />
+      <el-form-item label="申请时间" prop="timeRange">
+        <el-date-picker
+          v-model="queryParams.timeRange"
+          type="datetimerange"
+          range-separator="-"
+          start-placeholder="开始"
+          end-placeholder="结束"
+          value-format="yyyy-MM-dd HH:mm"
+          format="yyyy-MM-dd HH:mm"
+          :default-time="['00:00:00','23:59:00']"
+          clearable
+        />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
@@ -25,8 +32,16 @@
     </el-row>
 
   <el-table  v-loading="loading" :data="detailList" @selection-change="handleSelectionChange">
-      <el-table-column label="申请ID" prop="requestId" width="70" align="center" />
       <el-table-column label="会议室" prop="roomId" width="70" align="center" />
+      <el-table-column label="预约时段" width="300" align="center">
+        <template slot-scope="scope">{{ displayTimeRange(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="160" align="center">
+        <template slot-scope="scope">{{ displayCreate(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="用途" min-width="100" align="center" show-overflow-tooltip>
+        <template slot-scope="scope">{{ displayPurpose(scope.row) }}</template>
+      </el-table-column>
       <el-table-column label="审批状态" width="80" align="center">
         <template slot-scope="scope">
           <el-tag v-if="scope.row.status==='PENDING'" type="warning">待审批</el-tag>
@@ -38,25 +53,33 @@
       <el-table-column label="审批人" width="70" align="center">
         <template slot-scope="scope">{{ scope.row.adminName || '-' }}</template>
       </el-table-column>
-      <el-table-column label="预约时间" width="300" align="center">
-        <template slot-scope="scope">{{ displayTimeRange(scope.row) }}</template>
-      </el-table-column>
-      <el-table-column label="创建时间" width="160" align="center">
-        <template slot-scope="scope">{{ displayCreate(scope.row) }}</template>
-      </el-table-column>
       <el-table-column label="审批时间" prop="updateTime" width="160" align="center">
         <template slot-scope="scope">{{ displayUpdate(scope.row) }}</template>
       </el-table-column>
       <el-table-column label="审批意见" min-width="100" align="center" show-overflow-tooltip>
         <template slot-scope="scope">{{ displayDecisionRemark(scope.row) }}</template>
       </el-table-column>
-      <el-table-column label="用途" min-width="100" align="center" show-overflow-tooltip>
-        <template slot-scope="scope">{{ displayPurpose(scope.row) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="100">
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="170">
         <template slot-scope="scope">
-          <el-button size="mini" type="text" icon="el-icon-edit" @click="handleUpdate(scope.row)" :disabled="scope.row.status==='APPROVED'" v-hasPermi="['meeting:detail:edit']">修改</el-button>
-          <el-button size="mini" type="text" icon="el-icon-delete" @click="handleDelete(scope.row)" :disabled="scope.row.status==='APPROVED'" v-hasPermi="['meeting:detail:remove']">删除</el-button>
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-refresh-left"
+            :loading="withdrawLoadingId === scope.row.requestId"
+            :disabled="isWithdrawDisabled(scope.row)"
+            @click="handleWithdraw(scope.row)">撤回</el-button>
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-edit"
+            :disabled="isEditDisabled(scope.row)"
+            @click="handleUpdate(scope.row)">修改</el-button>
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-delete"
+            :disabled="isDeleteDisabled(scope.row)"
+            @click="handleDelete(scope.row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -65,17 +88,15 @@
 
     <!-- 添加或修改明细对话框 -->
     <el-dialog :title="title" :visible.sync="open" width="520px" append-to-body>
-      <el-form ref="form" :model="form" :rules="rules" label-width="90px">
+  <el-form ref="form" :model="form" :rules="rules" label-width="120px">
         <el-form-item label="会议室" prop="roomId">
           <el-input v-model="form.roomId" placeholder="请输入会议室ID" />
         </el-form-item>
-        <el-form-item label="开始时间" prop="startTime">
-          <!-- 确保为秒级格式 -->
-          <el-date-picker v-model="form.startTime" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" placeholder="请选择开始时间" clearable />
+        <el-form-item label="占用起始时间" prop="startTime">
+          <el-date-picker v-model="form.startTime" type="datetime" value-format="yyyy-MM-dd HH:mm" placeholder="请选择占用起始时间" clearable />
         </el-form-item>
-        <el-form-item label="结束时间" prop="endTime">
-          <!-- 确保为秒级格式 -->
-          <el-date-picker v-model="form.endTime" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" placeholder="请选择结束时间" clearable />
+        <el-form-item label="占用结束时间" prop="endTime">
+          <el-date-picker v-model="form.endTime" type="datetime" value-format="yyyy-MM-dd HH:mm" placeholder="请选择占用结束时间" clearable />
         </el-form-item>
       </el-form>
       <div slot="footer" class="dialog-footer">
@@ -106,7 +127,12 @@
                   <span>未来会议室占用情况</span>
                   <span v-if="canSeeOccupy" class="schedule-context">{{ roomScheduleContextLabel }}</span>
                 </div>
-                <el-button v-if="canSeeOccupy" type="text" icon="el-icon-refresh" @click="refreshRoomSchedule" :loading="roomScheduleLoading">刷新</el-button>
+                <div v-if="canSeeOccupy" class="schedule-header-actions">
+                  <el-select v-model="roomScheduleDayRange" size="mini" class="schedule-day-select">
+                    <el-option v-for="opt in scheduleDayOptions" :key="opt" :label="`近${opt}天`" :value="opt" />
+                  </el-select>
+                  <el-button type="text" icon="el-icon-refresh" @click="refreshRoomSchedule" :loading="roomScheduleLoading">刷新</el-button>
+                </div>
               </div>
               <template v-if="!canSeeOccupy">
                 <el-empty description="暂无权限查看占用信息" />
@@ -127,7 +153,7 @@
                       <el-empty v-else class="schedule-empty" description="暂无安排" />
                     </div>
                   </div>
-                  <el-empty v-else class="schedule-empty" description="近三日暂无占用安排" />
+                  <el-empty v-else class="schedule-empty" :description="`近${roomScheduleDayRange}日暂无占用安排`" />
                 </div>
               </template>
             </el-card>
@@ -140,48 +166,52 @@
     </el-dialog>
 
     <!-- 申请弹窗（作为唯一的申请入口） -->
-    <el-dialog title="会议室预约" :visible.sync="applyOpen" width="980px" append-to-body>
+    <el-dialog title="会议室预约" :visible.sync="applyOpen" width="980px" append-to-body >
       <div class="apply-dialog-layout">
         <div class="apply-dialog-left">
-          <el-form ref="applyFormRef" :model="applyForm" :rules="applyRules" label-width="90px">
+          <el-form ref="applyFormRef" :model="applyForm" :rules="rules" label-width="120px" margin-left="20px">
             <el-form-item label="会议室" prop="roomIds">
               <el-select v-model="applyForm.roomIds" multiple disabled filterable collapse-tags style="width:100%">
                 <el-option v-for="r in roomList" :key="r.roomId" :label="r.roomId" :value="r.roomId" />
               </el-select>
             </el-form-item>
             <!-- 开始时间：禁用过去的小时/分钟 -->
-            <el-form-item label="开始时间" prop="range">
+            <el-form-item label="占用起始时间" prop="range">
               <div class="apply-range-line">
-                <el-date-picker v-model="applyForm.startDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="开始日期" style="width: 140px" />
-                <el-select v-model="applyForm.startHour" placeholder="小时" style="width:75px; margin-left:6px">
+                <el-date-picker v-model="applyForm.startDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="起始时间" style="width:133px;" />
+                <el-select v-model="applyForm.startHour" placeholder="小时" style="width:70px; margin-left:2px;">
                   <el-option v-for="h in hoursOptions" :key="'sh-'+h" :label="h" :value="h" :disabled="isStartHourDisabled(h)" />
                 </el-select>
-                <el-select v-model="applyForm.startMinute" placeholder="分钟" style="width:75px; margin-left:6px">
+                <el-select v-model="applyForm.startMinute" placeholder="分钟" style="width:70px; margin-left:2px">
                   <el-option v-for="m in minutes10Options" :key="'sm-'+m" :label="m" :value="m" :disabled="isStartMinuteDisabled(m)" />
                 </el-select>
               </div>
             </el-form-item>
             <!-- 结束时间：禁用过去的小时/分钟（以及早于开始时的组合会被逻辑自动纠正） -->
-            <el-form-item label="结束时间" prop="range">
+            <el-form-item label="占用结束时间" prop="range">
               <div class="apply-range-line">
-                <el-date-picker v-model="applyForm.endDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="结束日期" style="width: 140px" />
-                <el-select v-model="applyForm.endHour" placeholder="小时" style="width:75px; margin-left:6px">
+                <el-date-picker v-model="applyForm.endDate" type="date" :picker-options="applyDateOptions" value-format="yyyy-MM-dd" placeholder="结束时间" style="width: 133px" />
+                <el-select v-model="applyForm.endHour" placeholder="小时" style="width:70px; margin-left:2px">
                   <el-option v-for="h in hoursOptions" :key="'eh-'+h" :label="h" :value="h" :disabled="isEndHourDisabled(h)" />
                 </el-select>
-                <el-select v-model="applyForm.endMinute" placeholder="分钟" style="width:75px; margin-left:6px">
+                <el-select v-model="applyForm.endMinute" placeholder="分钟" style="width:70px; margin-left:2px">
                   <el-option v-for="m in minutes10Options" :key="'em-'+m" :label="m" :value="m" :disabled="isEndMinuteDisabled(m)" />
                 </el-select>
               </div>
             </el-form-item>
-            <el-form-item label="用途">
+            <el-form-item label="用途" prop="remark">
               <el-input type="textarea" v-model="applyForm.remark" :rows="3" placeholder="请输入用途" />
             </el-form-item>
             <!-- 自动检测冲突：仅在存在冲突时显示结果表 -->
             <el-form-item v-if="applyConflicts.length" label="冲突结果">
               <el-table :data="applyConflicts" size="mini" border max-height="200">
                 <el-table-column prop="roomId" label="房间" width="120" />
-                <el-table-column prop="startTime" label="开始" width="160" />
-                <el-table-column prop="endTime" label="结束" width="160" />
+                <el-table-column label="开始" width="160">
+                  <template slot-scope="scope">{{ formatDateTime(scope.row.startTime || scope.row.start_time) }}</template>
+                </el-table-column>
+                <el-table-column label="结束" width="160">
+                  <template slot-scope="scope">{{ formatDateTime(scope.row.endTime || scope.row.end_time) }}</template>
+                </el-table-column>
               </el-table>
             </el-form-item>
           </el-form>
@@ -197,7 +227,12 @@
                 <span>未来会议室占用情况</span>
                 <span v-if="applyScheduleContextLabel" class="schedule-context">{{ applyScheduleContextLabel }}</span>
               </div>
-              <el-button v-if="canSeeOccupy" type="text" icon="el-icon-refresh" @click="refreshApplySchedule" :loading="applyScheduleLoading">刷新</el-button>
+              <div v-if="canSeeOccupy" class="schedule-header-actions">
+                <el-select v-model="applyScheduleDayRange" size="mini" class="schedule-day-select">
+                  <el-option v-for="opt in scheduleDayOptions" :key="`apply-${opt}`" :label="`近${opt}天`" :value="opt" />
+                </el-select>
+                <el-button type="text" icon="el-icon-refresh" @click="refreshApplySchedule" :loading="applyScheduleLoading">刷新</el-button>
+              </div>
             </div>
             <template v-if="!canSeeOccupy">
               <el-empty description="暂无权限查看占用信息" />
@@ -220,7 +255,7 @@
                       <el-empty v-else class="schedule-empty" description="暂无安排" />
                     </div>
                   </div>
-                  <el-empty v-else class="schedule-empty" description="暂无占用安排" />
+                  <el-empty v-else class="schedule-empty" :description="`近${applyScheduleDayRange}日暂无占用安排`" />
                 </div>
               </template>
             </template>
@@ -234,10 +269,22 @@
 <script>
 import { listMyDetail, getDetail, addDetail, updateDetail, delDetail } from '@/api/meeting/detail'
 import { listRoom } from '@/api/meeting/room'
-import { submitRequest, conflictCheck, listRequestDetail, listRequest } from '@/api/meeting/request'
+import { submitRequest, conflictCheck, listRequestDetail, listRequest, updateRequest } from '@/api/meeting/request'
 import { listReservation } from '@/api/meeting/reservation'
+import { addDateRange } from '@/utils/ruoyi'
 import { checkPermi } from '@/utils/permission'
 import MeetingRequestSubmit from '@/views/meeting/request/submit.vue'
+
+const getDefaultTimeRange = () => {
+  const pad = n => (n < 10 ? '0' : '') + n
+  const now = new Date()
+  const start = new Date(now.getTime())
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000)
+  end.setHours(23, 59, 0, 0)
+  const format = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return [format(start), format(end)]
+}
 
 export default {
   name: 'MeetingDetail',
@@ -246,7 +293,7 @@ export default {
     return {
       loading:false,
   detailList:[], total:0,
-  queryParams:{ pageNum:1, pageSize:10, roomId:null, startTime:null, endTime:null },
+  queryParams:{ pageNum:1, pageSize:10, roomId:null, timeRange:getDefaultTimeRange() },
       ids:[], single:true, multiple:true,
       form:{ detailId:null, requestId:null, roomId:null, startTime:null, endTime:null },
       open:false, title:'',
@@ -254,11 +301,13 @@ export default {
         requestId:[{ required:true, message:'申请ID不能为空', trigger:'blur' }],
         roomId:[{ required:true, message:'会议室不能为空', trigger:'blur' }],
         startTime:[{ required:true, message:'开始时间不能为空', trigger:'change' }],
-        endTime:[{ required:true, message:'结束时间不能为空', trigger:'change' }]
+        endTime:[{ required:true, message:'结束时间不能为空', trigger:'change' }],
+        remark:[{ required:true, message:'用途不能为空', trigger:'blur' }],
       },
       showSearch:true,
       // 新增：提交中态
       detailSubmitting:false,
+  withdrawLoadingId:null,
       // 新增：申请会议室弹窗所需
       applyOpen:false,
       // 新增：提交中状态（用于申请弹窗按钮禁用/loading）
@@ -285,6 +334,9 @@ export default {
           return t < minTs || t > maxTs;
         }
       },
+      scheduleDayOptions:[1,2,3,7,14,30],
+      roomScheduleDayRange:7,
+      applyScheduleDayRange:7,
       roomOptions:[],
       // 冲突结果
   applyConflicts:[],
@@ -355,13 +407,12 @@ export default {
         })
       })
       const roomOrder = Array.from(new Set([...orderedRooms, ...resolvedRooms])).filter(Boolean)
-      const days = this.buildScheduleDays(records, roomOrder, {
-        includeUntilLast: true,
+      const range = Math.max(1, Number(this.roomScheduleDayRange) || 7)
+      return this.buildScheduleDays(records, roomOrder, {
+        fixedDays: range,
         includeTodayAlways: true,
-        minDays: 3,
         trimEmptyFuture: true
       })
-      return days.filter(day=> Array.isArray(day.records) && day.records.length)
     },
     roomScheduleLoading(){
       if(!this.canSeeOccupy) return false
@@ -377,7 +428,7 @@ export default {
       })
     },
     roomHasScheduleContent(){
-      return this.canSeeOccupy && this.roomScheduleDays.length > 0
+      return this.canSeeOccupy && this.roomScheduleDays.some(day=> Array.isArray(day.records) && day.records.length)
     },
     applyScheduleDays(){
       if(!this.canSeeOccupy) return []
@@ -393,23 +444,58 @@ export default {
         endTime: item && (item.endTime || item.end_time),
         remark: this.resolveRemark(item)
       }))
-      const days = this.buildScheduleDays(records, ids, { includeUntilLast: true, minDays: 1, includeTodayAlways: true, trimEmptyFuture: true })
-      return days.filter(day=> Array.isArray(day.records) && day.records.length)
+      const uniqueOrder = Array.from(new Set(ids.map(id=> id).filter(v=> v != null)))
+      const range = Math.max(1, Number(this.applyScheduleDayRange) || 7)
+      return this.buildScheduleDays(records, uniqueOrder, {
+        fixedDays: range,
+        includeTodayAlways: true,
+        trimEmptyFuture: true
+      })
     },
     applyScheduleLoading(){
       return this.applyOccupyLoading
     },
     applyHasScheduleContent(){
       return this.applyScheduleDays.some(day=> Array.isArray(day.records) && day.records.length)
+    },
+    canWithdrawRequestPerm(){
+      return checkPermi(['meeting:request:edit','meeting:detail:edit'])
+    },
+    canEditDetailPerm(){
+      return checkPermi(['meeting:detail:edit', 'meeting:request:edit'])
+    },
+    canRemoveDetailPerm(){
+      return checkPermi(['meeting:detail:remove', 'meeting:request:edit'])
     }
   },
   created(){ this.getList(); this.loadRooms(); },
   watch:{
     // 房间选择变化时加载占用
     'applyForm.roomIds': function(){ this.loadApplyOccupy() },
-    'applyForm.startDate': function(){ this.composeApplyRange() },
-    'applyForm.startHour': function(){ this.composeApplyRange() },
-    'applyForm.startMinute': function(){ this.composeApplyRange() },
+    'applyForm.startDate': function(val){
+      if (val) {
+        this.endTouched = false
+        if (!this.applyForm.startHour) {
+          this.applyForm.startHour = '08'
+        }
+        if (!this.applyForm.startMinute) {
+          this.applyForm.startMinute = '00'
+        }
+      }
+      this.composeApplyRange()
+    },
+    'applyForm.startHour': function(val){
+      if (val != null && val !== '') {
+        this.endTouched = false
+      }
+      this.composeApplyRange()
+    },
+    'applyForm.startMinute': function(val){
+      if (val != null && val !== '') {
+        this.endTouched = false
+      }
+      this.composeApplyRange()
+    },
     // 监听结束时间的任一部分，认为用户已手动修改
     'applyForm.endDate': function(){ if(!this.updatingEndSilently) this.endTouched=true; this.composeApplyRange() },
     'applyForm.endHour': function(){ if(!this.updatingEndSilently) this.endTouched=true; this.composeApplyRange() },
@@ -433,6 +519,44 @@ export default {
     },
   },
   methods:{
+    isWithdrawDisabled(row){
+      if(!row) return true
+      const status = (row.status || '').toUpperCase()
+      if(!this.canWithdrawRequestPerm) return true
+      if(status === 'PENDING' || !row.requestId) return true
+      return this.withdrawLoadingId === row.requestId
+    },
+    isEditDisabled(row){
+      const status = ((row && row.status) || '').toUpperCase()
+      if (status !== 'PENDING') return true
+      return !this.canEditDetailPerm
+    },
+    isDeleteDisabled(row){
+      const status = ((row && row.status) || '').toUpperCase()
+      if (status !== 'PENDING') return true
+      return !this.canRemoveDetailPerm
+    },
+    handleWithdraw(row){
+      if(this.isWithdrawDisabled(row)) return
+      const requestId = row && row.requestId
+      if(!requestId){
+        this.$modal.msgError('无法识别申请编号，撤回失败')
+        return
+      }
+      this.$modal.confirm('确认将该申请撤回并重新进入待审批状态吗？').then(()=>{
+        this.withdrawLoadingId = requestId
+        const payload = { requestId, status:'PENDING', adminId:null, decisionTime:null, decisionRemark:null }
+        updateRequest(payload)
+          .then(()=>{
+            this.$modal.msgSuccess('撤回成功，申请已恢复为待审批状态')
+            this.getList()
+          })
+          .catch(()=>{
+            this.$modal.msgError('撤回失败，请稍后重试')
+          })
+          .finally(()=>{ this.withdrawLoadingId = null })
+      }).catch(()=>{})
+    },
     // 统一解析时间字符串为时间戳
     parseTs(str){
       if(str == null) return NaN
@@ -528,7 +652,9 @@ export default {
     async getList(){
       this.loading=true;
       try {
-        const res = await listMyDetail(this.queryParams);
+        const query = addDateRange({ ...this.queryParams }, this.queryParams.timeRange, 'CreateTime')
+        delete query.timeRange
+        const res = await listMyDetail(query);
         const rows = res.rows||[];
         this.detailList = rows;
         this.total = res.total || rows.length || 0;
@@ -560,9 +686,10 @@ export default {
     },
     handleSelectionChange(sel){ this.ids=sel.map(i=>i.detailId); this.single=sel.length!==1; this.multiple=!sel.length },
     handleQuery(){ this.queryParams.pageNum=1; this.getList() },
-    resetQuery(){ this.resetForm('queryForm'); this.handleQuery() },
+  resetQuery(){ this.resetForm('queryForm'); this.queryParams.timeRange = getDefaultTimeRange(); this.handleQuery() },
     handleAdd(){ this.resetFormData(); this.open=true; this.title='添加会议室申请明细' },
     handleUpdate(row){
+      if(this.isEditDisabled(row)) return
       this.resetFormData();
       const id = row.detailId || this.ids[0];
       if(!id) return;
@@ -582,8 +709,16 @@ export default {
           .finally(()=>{ this.detailSubmitting = false })
       })
     },
-    handleDelete(row){ const ids=row? [row.detailId]: this.ids; if(!ids.length) return; this.$modal.confirm('是否确认删除编号为"'+ids.join(',')+'"的会议室申请明细？').then(()=> delDetail(ids.join(','))).then(()=>{ this.$modal.msgSuccess('删除成功'); this.getList() }).catch(()=>{}) },
-    handleExport(){ this.download('meeting/detail/export', { ...this.queryParams }, `detail_${Date.now()}.xlsx`) },
+    handleDelete(row){
+      if(row && this.isDeleteDisabled(row)) return
+      if(!row && !this.canRemoveDetailPerm) return
+      const ids=row? [row.detailId]: this.ids; if(!ids.length) return; this.$modal.confirm('是否确认删除编号为"'+ids.join(',')+'"的会议室申请明细？').then(()=> delDetail(ids.join(','))).then(()=>{ this.$modal.msgSuccess('删除成功'); this.getList() }).catch(()=>{})
+    },
+    handleExport(){
+      const query = addDateRange({ ...this.queryParams }, this.queryParams.timeRange, 'CreateTime')
+      delete query.timeRange
+      this.download('meeting/detail/export', query, `detail_${Date.now()}.xlsx`)
+    },
     cancel(){ this.open=false },
     resetFormData(){ this.form={ detailId:null, requestId:null, roomId:null, startTime:null, endTime:null }; this.resetForm('form') },
     loadRooms(){ listRoom({ pageNum:1, pageSize:500 }).then(r=>{ this.roomOptions = r.rows || [] }) },
@@ -621,7 +756,7 @@ export default {
       const ts = this.parseTs(s)
       if(!isFinite(ts)) return s
       const d=new Date(ts); const p=n=>(n<10?'0':'')+n
-      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
     },
     displayTimeRange(row){
       const start = this.pickValidTime(row && row.startTime, row && row.start_time)
@@ -649,18 +784,8 @@ export default {
     displayUpdate(row){
       const req = this.getRequestInfo(row)
       const cand = this.pickValidTime(
-        row && row.updateTime, row && row.update_time,
         row && row.decisionTime, row && row.decision_time,
-        row && row.modifyTime, row && row.modify_time,
-        row && row.createTime, row && row.create_time,
-        row && row.gmtModified, row && row.gmt_modified,
-        row && row.gmtCreate, row && row.gmt_create,
-        req.updateTime, req.update_time,
         req.decisionTime, req.decision_time,
-        req.modifyTime, req.modify_time,
-        req.createTime, req.create_time,
-        req.gmtModified, req.gmt_modified,
-        req.gmtCreate, req.gmt_create
       )
       const formatted = cand ? this.formatDateTime(cand) : null
       return formatted || '-'
@@ -694,7 +819,7 @@ export default {
       // 若开始时间已齐，先组成并校正到未来
       let sStr=null, sTs=NaN
       if(startDate && startHour && startMinute){
-        sStr = `${startDate} ${startHour}:${startMinute}:00`
+  sStr = `${startDate} ${startHour}:${startMinute}`
         sTs = this.parseTs(sStr)
         const now = Date.now()
         if(isFinite(sTs) && sTs < now){
@@ -704,7 +829,7 @@ export default {
           this.applyForm.startDate = parts.d
           this.applyForm.startHour = parts.h
           this.applyForm.startMinute = parts.m
-          sStr = `${parts.d} ${parts.h}:${parts.m}:00`
+          sStr = `${parts.d} ${parts.h}:${parts.m}`
           sTs = adj
         }
       }
@@ -712,7 +837,7 @@ export default {
       if(sStr){
         const hasEnd = !!(endDate && endHour && endMinute)
         let eTs = NaN
-        if(hasEnd){ eTs = this.parseTs(`${endDate} ${endHour}:${endMinute}:00`) }
+  if(hasEnd){ eTs = this.parseTs(`${endDate} ${endHour}:${endMinute}`) }
         const shouldAutoFill = !this.endTouched || !isFinite(eTs) || (isFinite(sTs) && eTs <= sTs)
         if(shouldAutoFill && isFinite(sTs)){
           const autoEndTs = sTs + 60 * 60 * 1000
@@ -729,7 +854,7 @@ export default {
       }
       // 设置 range
       if(this.applyForm.startDate && this.applyForm.startHour && this.applyForm.startMinute && this.applyForm.endDate && this.applyForm.endHour && this.applyForm.endMinute){
-        this.applyForm.range = [ `${this.applyForm.startDate} ${this.applyForm.startHour}:${this.applyForm.startMinute}:00`, `${this.applyForm.endDate} ${this.applyForm.endHour}:${this.applyForm.endMinute}:00` ]
+  this.applyForm.range = [ `${this.applyForm.startDate} ${this.applyForm.startHour}:${this.applyForm.startMinute}`, `${this.applyForm.endDate} ${this.applyForm.endHour}:${this.applyForm.endMinute}` ]
         if(this.$refs && this.$refs.applyFormRef){ this.$refs.applyFormRef.clearValidate(['range']) }
       } else {
         this.applyForm.range = []
@@ -837,11 +962,15 @@ export default {
       const order = Array.isArray(roomOrder) ? roomOrder.filter(v=> v != null) : []
       const orderMap = {}
       order.forEach((id, idx)=>{ orderMap[String(id)] = idx })
-      const { includeUntilLast = false, minDays = 3, includeTodayAlways = false, trimEmptyFuture = false } = options || {}
+      const { includeUntilLast = false, minDays = 3, includeTodayAlways = false, trimEmptyFuture = false, fixedDays = null } = options || {}
       const dayMs = 24 * 60 * 60 * 1000
       const baseStart = this.startOfDay(new Date()).getTime()
       let offsetsToIterate = null
-      if(includeUntilLast){
+      const normalizedFixedDays = fixedDays != null ? Math.max(1, Number(fixedDays) || 1) : null
+      if(normalizedFixedDays){
+        offsetsToIterate = Array.from({ length: normalizedFixedDays }, (_, idx)=> idx)
+      }
+      if(!offsetsToIterate && includeUntilLast){
         const offsetsSet = new Set()
         if(includeTodayAlways) offsetsSet.add(0)
         normalizedRecords.forEach(item=>{
@@ -876,6 +1005,9 @@ export default {
         if(includeTodayAlways && !offsetsToIterate.includes(0)){
           offsetsToIterate.push(0)
           offsetsToIterate = Array.from(new Set(offsetsToIterate)).sort((a,b)=> a - b)
+        }
+        if(normalizedFixedDays && offsetsToIterate.length > normalizedFixedDays){
+          offsetsToIterate = offsetsToIterate.slice(0, normalizedFixedDays)
         }
       }
       const daysList = offsetsToIterate.map(offset=>{
@@ -919,7 +1051,7 @@ export default {
         }
       })
       if(trimEmptyFuture){
-        return daysList.filter(day=> day.offset === 0 || (Array.isArray(day.records) && day.records.length))
+        return daysList.filter(day=> Array.isArray(day.records) && day.records.length)
       }
       return daysList
     },
@@ -996,7 +1128,7 @@ export default {
 .detail-table ::v-deep td:nth-child(9) .cell{ white-space:nowrap; }
 .detail-table ::v-deep .reservation-time-col .cell{ white-space:nowrap; line-height:1.4;}
 .mb8{ margin-bottom:8px }
-.apply-range-line{ display:flex; align-items:center; flex-wrap:wrap }
+.apply-range-line{ display:flex; align-items:center; flex-wrap:wrap ;}
 .apply-dialog-layout{ display:flex; gap:20px; align-items:stretch }
 .apply-dialog-left{ flex:0 0 400px; min-width:280px; max-width:400px; display:flex; flex-direction:column }
 .apply-dialog-right{ flex:1 1 auto; min-width:0; display:flex }
@@ -1014,6 +1146,8 @@ export default {
 .schedule-card{ display:flex; flex-direction:column; height:100% }
 .schedule-header{ display:flex; align-items:center; justify-content:space-between; font-weight:600 }
 .schedule-header-left{ display:flex; align-items:center; gap:8px }
+.schedule-header-actions{ display:flex; align-items:center; gap:8px }
+.schedule-day-select{ width:110px }
 .schedule-context{ font-size:12px; color:#909399; font-weight:400 }
 .schedule-body{ flex:1; overflow-y:auto; max-height:360px; padding-right:4px }
 .room-schedule-body{ display:flex; flex-direction:column; gap:12px; overflow:visible; max-height:none; padding-right:0 }

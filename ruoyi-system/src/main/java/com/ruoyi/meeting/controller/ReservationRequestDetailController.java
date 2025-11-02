@@ -80,7 +80,7 @@ public class ReservationRequestDetailController extends BaseController
     /**
      * 获取申请明细详细信息
      */
-    @PreAuthorize("@ss.hasPermi('meeting:detail:query')")
+    @PreAuthorize("@ss.hasAnyPermi('meeting:detail:query,meeting:request:edit')")
     @GetMapping(value = "/{detailId}")
     public AjaxResult getInfo(@PathVariable("detailId") Long detailId)
     {
@@ -101,7 +101,7 @@ public class ReservationRequestDetailController extends BaseController
     /**
      * 修改申请明细
      */
-    @PreAuthorize("@ss.hasPermi('meeting:detail:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('meeting:detail:edit,meeting:request:edit')")
     @Log(title = "会议室申请明细", businessType = BusinessType.UPDATE)
     @PutMapping
     public AjaxResult edit(@RequestBody ReservationRequestDetail reservationRequestDetail)
@@ -112,7 +112,7 @@ public class ReservationRequestDetailController extends BaseController
     /**
      * 删除申请明细
      */
-    @PreAuthorize("@ss.hasPermi('meeting:detail:remove')")
+    @PreAuthorize("@ss.hasAnyPermi('meeting:detail:remove,meeting:request:edit')")
     @Log(title = "会议室申请明细", businessType = BusinessType.DELETE)
 	@DeleteMapping("/{detailIds}")
     public AjaxResult remove(@PathVariable Long[] detailIds)

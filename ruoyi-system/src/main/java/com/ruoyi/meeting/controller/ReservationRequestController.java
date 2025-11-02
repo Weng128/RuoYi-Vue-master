@@ -41,6 +41,17 @@ public class ReservationRequestController extends BaseController
     }
 
     /**
+     * 修改会议室申请
+     */
+    @PreAuthorize("@ss.hasAnyPermi('meeting:request:edit,meeting:detail:edit')")
+    @Log(title = "会议室申请", businessType = BusinessType.UPDATE)
+    @PutMapping
+    public AjaxResult edit(@RequestBody ReservationRequest reservationRequest)
+    {
+        return toAjax(reservationRequestService.updateReservationRequest(reservationRequest));
+    }
+
+    /**
      * 提交会议室申请（支持统一或独立时段）
      */
     @PreAuthorize("@ss.hasPermi('meeting:request:submit')")

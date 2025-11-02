@@ -37,6 +37,8 @@
             <if test="requestId != null"> and r.request_id=#{requestId}</if>
             <if test="applicantId != null"> and r.applicant_id=#{applicantId}</if>
             <if test="status != null and status != ''"> and r.status=#{status}</if>
+            <if test="params.beginCreateTime != null and params.beginCreateTime != ''"> and r.create_time &gt;= #{params.beginCreateTime}</if>
+            <if test="params.endCreateTime != null and params.endCreateTime != ''"> and r.create_time &lt;= #{params.endCreateTime}</if>
         </where>
         order by r.request_id desc
     </select>
@@ -75,6 +77,17 @@
 
     <update id="updateStatus">
         update reservation_request set status=#{status}, admin_id=#{adminId}, decision_time=now(), decision_remark=#{decisionRemark}, update_time=now()
+        where request_id=#{requestId}
+    </update>
+
+    <update id="resetApprovalState">
+        update reservation_request
+        set status=#{status},
+            admin_id=null,
+            decision_time=null,
+            decision_remark=null,
+            update_time=now()
+        <if test="remark != null">, remark=#{remark}</if>
         where request_id=#{requestId}
     </update>
 </mapper>

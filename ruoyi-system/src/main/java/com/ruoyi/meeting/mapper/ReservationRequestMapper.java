@@ -35,4 +35,7 @@ public interface ReservationRequestMapper
 
     /** 更新状态 */
     int updateStatus(@Param("requestId") Long requestId, @Param("status") String status, @Param("adminId") Long adminId, @Param("decisionRemark") String decisionRemark);
+
+    /** 撤回申请，重置审批字段 */
+    int resetApprovalState(@Param("requestId") Long requestId, @Param("status") String status, @Param("remark") String remark);
 }

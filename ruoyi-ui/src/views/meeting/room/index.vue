@@ -1,30 +1,30 @@
 <template>
   <div class="app-container meeting-room-page">
+    <el-form class="filter-form" :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
+      <el-form-item label="会议室" prop="roomId">
+        <el-input v-model="queryParams.roomId" placeholder="会议室编号" clearable @keyup.enter.native="handleQuery" />
+      </el-form-item>
+      <el-form-item label="容量" prop="capacity">
+        <el-input v-model="queryParams.capacity" placeholder="请输入容量" clearable @keyup.enter.native="handleQuery" />
+      </el-form-item>
+      <el-form-item label="位置" prop="location">
+        <el-input v-model="queryParams.location" placeholder="请输入位置" clearable @keyup.enter.native="handleQuery" />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
+        <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">重置</el-button>
+      </el-form-item>
+    </el-form>
+
     <el-row :gutter="16" class="room-layout">
       <el-col
         :xs="24"
         :sm="24"
-        :md="14"
-        :lg="14"
-        :xl="13"
+        :md="8"
+        :lg="8"
+        :xl="8"
         class="room-left"
       >
-        <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
-          <el-form-item label="会议室" prop="roomId">
-            <el-input v-model="queryParams.roomId" placeholder="会议室编号" clearable @keyup.enter.native="handleQuery" />
-          </el-form-item>
-          <el-form-item label="容量" prop="capacity">
-            <el-input v-model="queryParams.capacity" placeholder="请输入容量" clearable @keyup.enter.native="handleQuery" />
-          </el-form-item>
-          <el-form-item label="位置" prop="location">
-            <el-input v-model="queryParams.location" placeholder="请输入位置" clearable @keyup.enter.native="handleQuery" />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
-            <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">重置</el-button>
-          </el-form-item>
-        </el-form>
-
         <el-row :gutter="10" class="mb8 action-bar">
           <el-col :span="12" class="left-actions">
             <el-button type="primary" icon="el-icon-plus" size="mini" @click="handleAdd" v-hasPermi="['meeting:room:add']">新增会议室</el-button>
@@ -43,80 +43,37 @@
           @selection-change="handleSelectionChange"
           @row-click="handleRowClick"
         >
-          <el-table-column type="selection" width="55" align="center" />
-          <el-table-column label="会议室编号" align="center" prop="roomId" />
-          <el-table-column label="容量" align="center" prop="capacity" width="90" />
-          <el-table-column label="状态" align="center" width="100">
-            <template slot-scope="scope">
-              <el-tag v-if="!canSeeOccupy" type="info">无权限</el-tag>
-              <template v-else>
-                <el-tag v-if="occupyMap[scope.row.roomId] && occupyMap[scope.row.roomId].loading" type="info">加载中</el-tag>
-                <el-tooltip
-                  v-else-if="currentOccupyInfos[scope.row.roomId]"
-                  placement="top"
-                  effect="dark"
-                  :open-delay="150"
-                >
-                  <template #content>
-                    <div class="occupy-tooltip">
-                      <div>申请人：{{ currentOccupyInfos[scope.row.roomId].applicant }}</div>
-                      <div>审批人：{{ currentOccupyInfos[scope.row.roomId].approver }}</div>
-                      <div>开始时间：{{ currentOccupyInfos[scope.row.roomId].start }}</div>
-                      <div>结束时间：{{ currentOccupyInfos[scope.row.roomId].end }}</div>
-                    </div>
-                  </template>
-                  <el-tag type="danger">占用中</el-tag>
-                </el-tooltip>
-                <el-tag v-else-if="isOccupiedNow(scope.row.roomId)" type="danger">占用中</el-tag>
-                <el-tag v-else type="success">空闲</el-tag>
-              </template>
-            </template>
-          </el-table-column>
-          <el-table-column label="占用时段" align="left" min-width="290">
-            <template slot-scope="scope">
-              <div class="occupy-cell" v-loading="occupyMap[scope.row.roomId] && occupyMap[scope.row.roomId].loading">
-                <template v-if="!canSeeOccupy">
-                  <span style="color:#909399">暂无权限查看</span>
-                </template>
-                <template v-else>
-                  <div class="occupy-list">
-                    <el-tag v-for="(item, idx) in getFutureOccupy(scope.row.roomId)" :key="idx" size="mini" effect="plain">
-                      {{ item.startTime }} ~ {{ item.endTime }}<span v-if="item.remark">（{{ item.remark }}）</span>
-                    </el-tag>
-                    <el-button type="text" icon="el-icon-refresh" @click.stop="fetchRoomOccupy(scope.row.roomId)" title="刷新该会议室占用" />
-                  </div>
-                  <template v-if="!getFutureOccupy(scope.row.roomId).length">
-                    <span style="color:#909399">暂无占用</span>
-                  </template>
-                </template>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="120">
+          <el-table-column label="会议室编号" align="center" prop="roomId" min-width="150"/>
+          <el-table-column label="容量" align="center" prop="capacity" min-width="120" />
+          <el-table-column label="操作" align="center" class-name="small-padding fixed-width" min-width="140">
             <template slot-scope="scope">
               <el-button size="mini" type="text" icon="el-icon-edit" @click="handleUpdate(scope.row)" v-hasPermi="['meeting:room:edit']">修改</el-button>
               <el-button size="mini" type="text" icon="el-icon-delete" @click="handleDelete(scope.row)" v-hasPermi="['meeting:room:remove']">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
-
         <pagination v-show="total>0" :total="total" :page.sync="queryParams.pageNum" :limit.sync="queryParams.pageSize" @pagination="getList" />
       </el-col>
       <el-col
         :xs="24"
         :sm="24"
-        :md="10"
-        :lg="10"
-        :xl="11"
+        :md="16"
+        :lg="16"
+        :xl="16"
         class="room-right"
       >
         <el-card shadow="never" class="schedule-card">
           <div slot="header" class="schedule-header">
             <div class="schedule-header-left">
-              <span>未来三日会议室空闲情况</span>
+              <span>未来{{ scheduleDayRange }}日会议室空闲情况</span>
               <span v-if="canSeeOccupy" class="schedule-context">{{ scheduleContextLabel }}</span>
             </div>
-            <el-button v-if="canSeeOccupy" type="text" icon="el-icon-refresh" @click="refreshSchedule" :loading="scheduleLoading">刷新</el-button>
+            <div v-if="canSeeOccupy" class="schedule-header-actions">
+              <el-select v-model="scheduleDayRange" size="mini" class="schedule-day-select">
+                <el-option v-for="opt in scheduleDayOptions" :key="opt" :label="`近${opt}天`" :value="opt" />
+              </el-select>
+              <el-button type="text" icon="el-icon-refresh" @click="refreshSchedule" :loading="scheduleLoading">刷新</el-button>
+            </div>
           </div>
           <template v-if="!canSeeOccupy">
             <el-empty description="暂无权限查看占用信息" />
@@ -136,7 +93,7 @@
                   </div>
                 </div>
               </div>
-              <el-empty v-else class="schedule-empty" description="近三日暂无占用安排" />
+              <el-empty v-else class="schedule-empty" :description="`近${scheduleDayRange}日暂无占用安排`" />
             </div>
           </template>
         </el-card>
@@ -171,7 +128,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="时间范围" prop="range">
-          <el-date-picker v-model="applyForm.range" type="datetimerange" value-format="yyyy-MM-dd HH:mm:ss" start-placeholder="开始" end-placeholder="结束" style="width:100%" />
+          <el-date-picker v-model="applyForm.range" type="datetimerange" value-format="yyyy-MM-dd HH:mm" start-placeholder="开始" end-placeholder="结束" style="width:100%" />
         </el-form-item>
         <el-form-item label="备注">
           <el-input type="textarea" v-model="applyForm.remark" :rows="3" placeholder="用途/备注" />
@@ -179,8 +136,12 @@
         <el-form-item label="占用时段">
           <div v-loading="applyOccupyLoading">
             <el-table :data="applyOccupy" size="mini" border max-height="200" v-if="applyOccupy && applyOccupy.length">
-              <el-table-column prop="startTime" label="开始" />
-              <el-table-column prop="endTime" label="结束" />
+              <el-table-column label="开始">
+                <template slot-scope="scope">{{ formatDateTimeString(scope.row.startTime || scope.row.start_time) }}</template>
+              </el-table-column>
+              <el-table-column label="结束">
+                <template slot-scope="scope">{{ formatDateTimeString(scope.row.endTime || scope.row.end_time) }}</template>
+              </el-table-column>
             </el-table>
             <el-empty v-else description="暂无占用或未选择会议室" />
           </div>
@@ -188,8 +149,12 @@
         <el-form-item v-if="applyConflicts.length" label="冲突结果">
           <el-table :data="applyConflicts" size="mini" border max-height="200">
             <el-table-column prop="roomId" label="会议室" width="120" />
-            <el-table-column prop="startTime" label="开始" width="160" />
-            <el-table-column prop="endTime" label="结束" width="160" />
+            <el-table-column label="开始" width="160">
+              <template slot-scope="scope">{{ formatDateTimeString(scope.row.startTime || scope.row.start_time) }}</template>
+            </el-table-column>
+            <el-table-column label="结束" width="160">
+              <template slot-scope="scope">{{ formatDateTimeString(scope.row.endTime || scope.row.end_time) }}</template>
+            </el-table-column>
           </el-table>
         </el-form-item>
       </el-form>
@@ -229,7 +194,9 @@ export default {
         roomIds:[{ required:true, message:'请选择会议室', trigger:'change' }],
         range:[{ validator:(r,v,cb)=>{ if(!v||v.length!==2) cb(new Error('请选择时间范围')); else cb(); }, trigger:'change' }]
       },
-      // 自动冲突与占用
+  scheduleDayOptions:[1,2,3,7,14,30],
+  scheduleDayRange:3,
+  // 自动冲突与占用
       applyConflicts:[],
       applyOccupy:[],
       applyOccupyLoading:false,
@@ -270,7 +237,8 @@ export default {
         : rooms.map(room=>room && room.roomId).filter(id=>id)
       const fallbackRooms = Object.keys(this.occupyMap || {})
       const resolvedRooms = targetRooms.length ? targetRooms : fallbackRooms
-      for(let offset=0; offset<3; offset++){
+      const range = Math.max(1, Number(this.scheduleDayRange) || 3)
+      for(let offset=0; offset<range; offset++){
         const dayStart = baseTs + offset * dayMs
         const dayEnd = dayStart + dayMs
         const dayRecords = []
@@ -338,7 +306,8 @@ export default {
       })
     },
     hasScheduleContent(){
-      return this.canSeeOccupy && this.scheduleDays.length > 0
+  if(!this.canSeeOccupy) return false
+  return this.scheduleDays.some(day=> Array.isArray(day.records) && day.records.length)
     },
     currentOccupyInfos(){
       const result = Object.create(null)
@@ -670,6 +639,10 @@ export default {
   padding-bottom: 0;
 }
 
+.filter-form {
+  margin-bottom: 16px;
+}
+
 .room-layout {
   display: flex;
   flex-wrap: wrap;
@@ -679,7 +652,15 @@ export default {
 .room-right {
   display: flex;
   flex-direction: column;
-  min-width: 360px;
+  min-width: 260px;
+}
+
+.room-left {
+  max-width: 420px;
+}
+
+.room-right {
+  min-width: 520px;
 }
 
 .action-bar {
@@ -712,6 +693,10 @@ export default {
   flex-direction: column;
 }
 
+.schedule-card ::v-deep .el-card__body {
+  padding: 12px 16px;
+}
+
 .schedule-header {
   display: flex;
   align-items: center;
@@ -723,6 +708,16 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.schedule-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-day-select {
+  width: 110px;
 }
 
 .schedule-context {
@@ -740,15 +735,8 @@ export default {
 
 .schedule-days-wrap {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  width: 100%;
-  align-items: stretch;
-}
-.schedule-day-box {
-  min-width: 0;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
   width: 100%;
   align-items: stretch;
 }
@@ -758,25 +746,29 @@ export default {
   background: #f9fafc;
   border: 1px solid #ebeef5;
   border-radius: 8px;
-  padding: 12px;
+  padding: 8px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .schedule-day-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .schedule-item {
   background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 6px;
   box-shadow: 0 1px 2px rgba(31, 35, 41, 0.04);
+}
+
+.schedule-day-title {
+  font-size: 13px;
 }
 
 .schedule-item-time {

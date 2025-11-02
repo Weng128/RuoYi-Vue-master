@@ -20,8 +20,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="时间范围" prop="range">
-          <!-- 统一为秒级格式 -->
-          <el-date-picker v-model="form.range" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="yyyy-MM-dd HH:mm:ss" style="width:100%" />
+          <el-date-picker v-model="form.range" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="yyyy-MM-dd HH:mm" style="width:100%" />
         </el-form-item>
       </template>
       <!-- 多时段模式 -->
@@ -37,14 +36,12 @@
             </el-table-column>
             <el-table-column label="开始时间" width="200">
               <template slot-scope="scope">
-                <!-- 统一为秒级格式 -->
-                <el-date-picker v-model="scope.row.startTime" type="datetime" placeholder="开始" value-format="yyyy-MM-dd HH:mm:ss" style="width:190px" />
+                <el-date-picker v-model="scope.row.startTime" type="datetime" placeholder="开始" value-format="yyyy-MM-dd HH:mm" style="width:190px" />
               </template>
             </el-table-column>
             <el-table-column label="结束时间" width="200">
               <template slot-scope="scope">
-                <!-- 统一为秒级格式 -->
-                <el-date-picker v-model="scope.row.endTime" type="datetime" placeholder="结束" value-format="yyyy-MM-dd HH:mm:ss" style="width:190px" />
+                <el-date-picker v-model="scope.row.endTime" type="datetime" placeholder="结束" value-format="yyyy-MM-dd HH:mm" style="width:190px" />
               </template>
             </el-table-column>
             <el-table-column label="操作" width="90">
@@ -70,8 +67,12 @@
         <el-table :data="conflicts" size="mini" border class="mt5" max-height="260">
           <el-table-column prop="sourceType" label="来源" width="100" />
             <el-table-column prop="roomId" label="会议室" width="120" />
-            <el-table-column prop="startTime" label="开始" width="170" />
-            <el-table-column prop="endTime" label="结束" width="170" />
+            <el-table-column label="开始" width="170">
+              <template slot-scope="scope">{{ formatDisplayTime(scope.row.startTime || scope.row.start_time) }}</template>
+            </el-table-column>
+            <el-table-column label="结束" width="170">
+              <template slot-scope="scope">{{ formatDisplayTime(scope.row.endTime || scope.row.end_time) }}</template>
+            </el-table-column>
         </el-table>
       </el-form-item>
 
@@ -156,6 +157,19 @@ export default {
         this.submitting = true
         if(this.conflicts.length){ this.$modal.confirm('存在冲突，仍然提交？').then(()=>confirmSubmit()).catch(()=>{ this.submitting=false }) } else { confirmSubmit() }
       })
+    },
+    formatDisplayTime(value){
+      if(value == null) return '--'
+      const s = String(value).trim()
+      if(!s) return '--'
+      const tryIso = Date.parse(s.replace(' ', 'T'))
+      const ts = !isNaN(tryIso) ? tryIso : Date.parse(s.replace(/-/g,'/'))
+      if(!isNaN(ts)){
+        const d = new Date(ts)
+        const pad = (n)=> (n<10? '0' : '') + n
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+      }
+      return s
     }
   }
 }
